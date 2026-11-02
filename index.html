@@ -1,0 +1,1283 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="UTF-8" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <title>Pixel Campfire Lounge ⛺</title>
+  <style>
+    /* CSS Reset & Variables */
+    :root {
+      --bg-dark: #0b0e14;
+      --panel-bg: rgba(18, 22, 34, 0.88);
+      --border-color: rgba(255, 255, 255, 0.12);
+      --text-main: #f0f3fc;
+      --text-muted: #95a1be;
+      --accent-warm: #ff9e44;
+      --accent-green: #48e592;
+      --accent-blue: #4db3ff;
+      --accent-yellow: #ffd043;
+    }
+
+    * {
+      box-sizing: border-box;
+      margin: 0;
+      padding: 0;
+      user-select: none;
+      -webkit-user-select: none;
+    }
+
+    html, body {
+      width: 100%;
+      height: 100%;
+      overflow: hidden;
+      background-color: var(--bg-dark);
+      font-family: 'Courier New', Courier, monospace, system-ui;
+      color: var(--text-main);
+      display: flex;
+      flex-direction: column;
+      align-items: center;
+      justify-content: center;
+    }
+
+    /* Pixel Art Scaled Canvas Wrapper */
+    #viewport {
+      position: relative;
+      width: 100vw;
+      height: 100vh;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      background: #080a0f;
+    }
+
+    canvas#gameCanvas {
+      image-rendering: -moz-crisp-edges;
+      image-rendering: -webkit-crisp-edges;
+      image-rendering: pixelated;
+      image-rendering: crisp-edges;
+      background-color: #0b111a;
+      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+    }
+
+    /* Minimalist Retro Top HUD */
+    .hud-top {
+      position: absolute;
+      top: 12px;
+      left: 12px;
+      right: 12px;
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      pointer-events: none;
+      z-index: 20;
+    }
+
+    .hud-group {
+      display: flex;
+      align-items: center;
+      gap: 8px;
+      pointer-events: auto;
+    }
+
+    .hud-pill {
+      background: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      border-radius: 999px;
+      padding: 5px 12px;
+      font-size: 11px;
+      font-weight: 700;
+      letter-spacing: 0.5px;
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    .status-dot {
+      width: 8px;
+      height: 8px;
+      border-radius: 50%;
+      background: var(--accent-yellow);
+      box-shadow: 0 0 6px var(--accent-yellow);
+    }
+    .status-dot.connected {
+      background: var(--accent-green);
+      box-shadow: 0 0 8px var(--accent-green);
+    }
+
+    .hud-btn {
+      background: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      border-radius: 999px;
+      padding: 5px 10px;
+      font-size: 11px;
+      cursor: pointer;
+      display: inline-flex;
+      align-items: center;
+      gap: 4px;
+      font-family: inherit;
+      transition: all 0.15s ease;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+    .hud-btn:hover {
+      background: rgba(255, 255, 255, 0.18);
+      transform: translateY(-1px);
+    }
+    .hud-btn:active {
+      transform: translateY(1px);
+    }
+
+    /* Instructions helper hint */
+    .interaction-hint {
+      position: absolute;
+      top: 50px;
+      left: 50%;
+      transform: translateX(-50%);
+      background: rgba(14, 18, 28, 0.85);
+      border: 1px solid rgba(255, 255, 255, 0.1);
+      padding: 4px 12px;
+      border-radius: 20px;
+      font-size: 10px;
+      color: var(--text-muted);
+      pointer-events: none;
+      white-space: nowrap;
+      backdrop-filter: blur(4px);
+    }
+    .interaction-hint span {
+      color: var(--accent-yellow);
+      font-weight: bold;
+    }
+
+    /* Bottom Chat & Reaction Bar */
+    .hud-bottom {
+      position: absolute;
+      bottom: 14px;
+      left: 50%;
+      transform: translateX(-50%);
+      display: flex;
+      align-items: center;
+      gap: 6px;
+      background: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      padding: 6px 10px;
+      border-radius: 999px;
+      z-index: 20;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+    }
+
+    .emoji-btn {
+      background: rgba(255, 255, 255, 0.08);
+      border: none;
+      font-size: 14px;
+      padding: 4px 8px;
+      border-radius: 999px;
+      cursor: pointer;
+      transition: transform 0.12s ease;
+    }
+    .emoji-btn:hover {
+      transform: scale(1.25);
+    }
+
+    .chat-input {
+      background: rgba(0, 0, 0, 0.4);
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      border-radius: 999px;
+      color: #fff;
+      font-family: inherit;
+      font-size: 11px;
+      padding: 4px 10px;
+      outline: none;
+      width: 140px;
+      transition: width 0.2s ease, border-color 0.2s ease;
+    }
+    .chat-input:focus {
+      width: 190px;
+      border-color: var(--accent-warm);
+    }
+
+    /* Mobile On-Screen Controls */
+    .mobile-controls {
+      position: absolute;
+      bottom: 60px;
+      left: 14px;
+      display: none;
+      z-index: 25;
+      grid-template-columns: repeat(3, 40px);
+      grid-template-rows: repeat(3, 40px);
+      gap: 4px;
+    }
+    .mobile-actions {
+      position: absolute;
+      bottom: 60px;
+      right: 14px;
+      display: none;
+      flex-direction: column;
+      gap: 8px;
+      z-index: 25;
+    }
+
+    .touch-btn {
+      background: rgba(255, 255, 255, 0.12);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      color: #fff;
+      font-size: 12px;
+      font-weight: bold;
+      border-radius: 8px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      touch-action: manipulation;
+    }
+    .touch-action-btn {
+      width: 48px;
+      height: 48px;
+      border-radius: 50%;
+      background: rgba(255, 158, 68, 0.25);
+      border: 1px solid var(--accent-warm);
+    }
+
+    @media (pointer: coarse), (max-width: 768px) {
+      .mobile-controls { display: grid; }
+      .mobile-actions { display: flex; }
+      .hud-bottom { bottom: 10px; }
+      .interaction-hint { display: none; }
+    }
+
+    /* Toast overlay */
+    #toast {
+      position: absolute;
+      top: 20px;
+      left: 50%;
+      transform: translateX(-50%) translateY(-20px);
+      background: #192030;
+      color: #fff;
+      border: 1px solid var(--accent-warm);
+      padding: 6px 14px;
+      border-radius: 999px;
+      font-size: 11px;
+      font-weight: bold;
+      opacity: 0;
+      pointer-events: none;
+      transition: all 0.25s ease;
+      z-index: 100;
+    }
+    #toast.show {
+      transform: translateX(-50%) translateY(0);
+      opacity: 1;
+    }
+  </style>
+</head>
+<body>
+  <div id="viewport">
+    <canvas id="gameCanvas" width="360" height="202"></canvas>
+
+    <!-- Top Minimalist Retro HUD -->
+    <header class="hud-top">
+      <div class="hud-group">
+        <div class="hud-pill">
+          <div id="statusDot" class="status-dot"></div>
+          <span id="connLabel">Searching peers...</span>
+        </div>
+        <div class="hud-pill">
+          <span>👥</span>
+          <span id="peerCount">1 camper</span>
+        </div>
+      </div>
+
+      <div class="hud-group">
+        <button id="copyInviteBtn" class="hud-btn" title="Copy Room Invite Link">
+          <span>🔗</span>
+          <span id="roomLabel">#lobby</span>
+        </button>
+        <button id="muteBtn" class="hud-btn" title="Toggle Nature Sounds">
+          <span id="muteIcon">🔇 Audio</span>
+        </button>
+      </div>
+    </header>
+
+    <!-- Context Hint -->
+    <div id="interactionHint" class="interaction-hint">
+      <span>WASD</span> Walk &bull; <span>E</span> Sit on Log &bull; <span>SPACE</span> Fish near Lake &bull; <span>ENTER</span> Chat
+    </div>
+
+    <!-- Bottom Quick Chat / Emoji Bar -->
+    <footer class="hud-bottom">
+      <button class="emoji-btn" data-emoji="🔥">🔥</button>
+      <button class="emoji-btn" data-emoji="🐟">🐟</button>
+      <button class="emoji-btn" data-emoji="☕">☕</button>
+      <button class="emoji-btn" data-emoji="❤️">❤️</button>
+      <button class="emoji-btn" data-emoji="💤">💤</button>
+      <input type="text" id="chatInput" class="chat-input" placeholder="Say something..." maxlength="30" autocomplete="off" />
+    </footer>
+
+    <!-- Mobile Virtual Controls -->
+    <div class="mobile-controls">
+      <div></div>
+      <div class="touch-btn" id="btnUp">▲</div>
+      <div></div>
+      <div class="touch-btn" id="btnLeft">◀</div>
+      <div></div>
+      <div class="touch-btn" id="btnRight">▶</div>
+      <div></div>
+      <div class="touch-btn" id="btnDown">▼</div>
+      <div></div>
+    </div>
+    <div class="mobile-actions">
+      <button class="touch-btn touch-action-btn" id="btnSit" title="Sit">🪑</button>
+      <button class="touch-btn touch-action-btn" id="btnFish" title="Fish">🎣</button>
+    </div>
+
+    <div id="toast">Invite link copied!</div>
+  </div>
+
+  <!-- Modern ES Module Native Client-Side Engine -->
+  <script type="module">
+    import { joinRoom } from 'https://esm.sh/trystero@0.20.0/torrent';
+
+    // ----------------------------------------------------
+    // 1. CONFIGURATION & CONSTANTS
+    // ----------------------------------------------------
+    const APP_ID = 'pixel-campfire-lounge-v1';
+    const V_WIDTH = 360;
+    const V_HEIGHT = 202;
+    const FIRE_X = 160;
+    const FIRE_Y = 100;
+    const LAKE_SHORE_X = 275;
+
+    // Pastel Retro Color Schemes for 16x16 Pixel Chibi Avatars
+    const COLOR_THEMES = [
+      { shirt: '#e06f6f', hair: '#402a23', skin: '#fcd3b2' }, // Coral
+      { shirt: '#58a4b0', hair: '#1a1f2c', skin: '#fedac2' }, // Ocean Blue
+      { shirt: '#70b77e', hair: '#d48d53', skin: '#f8c8a0' }, // Forest Green
+      { shirt: '#a278b5', hair: '#2b233a', skin: '#ffd9b3' }, // Lavender
+      { shirt: '#e8a838', hair: '#543d2b', skin: '#ffe0bd' }, // Amber Yellow
+      { shirt: '#e684ae', hair: '#3a232b', skin: '#fcd3b2' }  // Dusty Rose
+    ];
+
+    const FISH_SPECIES = [
+      { name: 'Neon Minnow', icon: '🐟', rarity: 'Common' },
+      { name: 'Golden Guppy', icon: '🐠', rarity: 'Uncommon' },
+      { name: 'Midnight Trout', icon: '🎣', rarity: 'Rare' },
+      { name: 'Rainbow Carp', icon: '✨', rarity: 'Legendary' },
+      { name: 'Old Boot', icon: '👢', rarity: 'Junk' }
+    ];
+
+    // ----------------------------------------------------
+    // 2. PROCEDURAL SOUND SYNTHESIZER (WEB AUDIO API)
+    // ----------------------------------------------------
+    class CozyAudio {
+      constructor() {
+        this.ctx = null;
+        this.enabled = false;
+        this.fireNoiseNode = null;
+        this.fireGain = null;
+      }
+
+      init() {
+        if (!this.ctx) {
+          const AudioCtx = window.AudioContext || window.webkitAudioContext;
+          if (AudioCtx) this.ctx = new AudioCtx();
+        }
+        if (this.ctx && this.ctx.state === 'suspended') {
+          this.ctx.resume();
+        }
+      }
+
+      toggle() {
+        this.init();
+        this.enabled = !this.enabled;
+        if (this.enabled) {
+          this.startFireAmbience();
+          document.getElementById('muteIcon').textContent = '🔊 Audio On';
+        } else {
+          this.stopFireAmbience();
+          document.getElementById('muteIcon').textContent = '🔇 Audio Off';
+        }
+        return this.enabled;
+      }
+
+      startFireAmbience() {
+        if (!this.ctx || this.fireNoiseNode) return;
+        // Generate soft brown-noise crackle for ambient campfire
+        const bufferSize = this.ctx.sampleRate * 2;
+        const noiseBuffer = this.ctx.createBuffer(1, bufferSize, this.ctx.sampleRate);
+        const output = noiseBuffer.getChannelData(0);
+        let lastOut = 0.0;
+        for (let i = 0; i < bufferSize; i++) {
+          const white = Math.random() * 2 - 1;
+          output[i] = (lastOut + 0.02 * white) / 1.02; // Brown noise filter
+          lastOut = output[i];
+          output[i] *= 3.5;
+        }
+
+        const whiteNoise = this.ctx.createBufferSource();
+        whiteNoise.buffer = noiseBuffer;
+        whiteNoise.loop = true;
+
+        const filter = this.ctx.createBiquadFilter();
+        filter.type = 'lowpass';
+        filter.frequency.value = 450;
+
+        this.fireGain = this.ctx.createGain();
+        this.fireGain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+
+        whiteNoise.connect(filter);
+        filter.connect(this.fireGain);
+        this.fireGain.connect(this.ctx.destination);
+        whiteNoise.start(0);
+        this.fireNoiseNode = whiteNoise;
+      }
+
+      stopFireAmbience() {
+        if (this.fireNoiseNode) {
+          try { this.fireNoiseNode.stop(); } catch(e){}
+          this.fireNoiseNode = null;
+        }
+      }
+
+      playTextBlip() {
+        if (!this.enabled || !this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'square';
+        osc.frequency.setValueAtTime(700, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(1050, this.ctx.currentTime + 0.05);
+        gain.gain.setValueAtTime(0.04, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.05);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.05);
+      }
+
+      playSplash() {
+        if (!this.enabled || !this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'sine';
+        osc.frequency.setValueAtTime(400, this.ctx.currentTime);
+        osc.frequency.exponentialRampToValueAtTime(120, this.ctx.currentTime + 0.2);
+        gain.gain.setValueAtTime(0.09, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.2);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.2);
+      }
+
+      playCatchPing() {
+        if (!this.enabled || !this.ctx) return;
+        const osc = this.ctx.createOscillator();
+        const gain = this.ctx.createGain();
+        osc.type = 'triangle';
+        osc.frequency.setValueAtTime(523.25, this.ctx.currentTime); // C5
+        osc.frequency.setValueAtTime(659.25, this.ctx.currentTime + 0.08); // E5
+        osc.frequency.setValueAtTime(783.99, this.ctx.currentTime + 0.16); // G5
+        gain.gain.setValueAtTime(0.08, this.ctx.currentTime);
+        gain.gain.exponentialRampToValueAtTime(0.001, this.ctx.currentTime + 0.35);
+        osc.connect(gain);
+        gain.connect(this.ctx.destination);
+        osc.start();
+        osc.stop(this.ctx.currentTime + 0.35);
+      }
+    }
+    const audio = new CozyAudio();
+
+    // ----------------------------------------------------
+    // 3. LOG BENCHES & ENVIRONMENT PROPS
+    // ----------------------------------------------------
+    const LOG_BENCHES = [
+      { id: 'top', x: 145, y: 72, w: 30, h: 10, sitX: 160, sitY: 74, faceDir: 'down' },
+      { id: 'bottom', x: 145, y: 126, w: 30, h: 10, sitX: 160, sitY: 122, faceDir: 'up' },
+      { id: 'left', x: 122, y: 92, w: 10, h: 24, sitX: 126, sitY: 104, faceDir: 'right' },
+      { id: 'right', x: 188, y: 92, w: 10, h: 24, sitX: 184, sitY: 104, faceDir: 'left' }
+    ];
+
+    const TREES = [
+      { x: 30, y: 35 }, { x: 75, y: 25 }, { x: 120, y: 18 },
+      { x: 25, y: 95 }, { x: 45, y: 155 }, { x: 95, y: 175 },
+      { x: 155, y: 182 }, { x: 215, y: 170 }, { x: 200, y: 25 }
+    ];
+
+    // ----------------------------------------------------
+    // 4. GAME STATE
+    // ----------------------------------------------------
+    const myTheme = COLOR_THEMES[Math.floor(Math.random() * COLOR_THEMES.length)];
+    const savedName = localStorage.getItem('pixel_camp_name') || `Camper ${Math.floor(Math.random() * 899 + 100)}`;
+
+    const localPlayer = {
+      id: 'me',
+      name: savedName,
+      theme: myTheme,
+      x: 140,
+      y: 110,
+      dir: 'down',
+      isMoving: false,
+      state: 'idle', // 'idle' | 'sitting' | 'fishing'
+      animTimer: 0,
+      animFrame: 0,
+      bubble: null,
+      bubbleTimer: 0,
+      // Fishing specifics
+      fishTimer: 0,
+      fishBite: false,
+      fishCatchNotice: null,
+      fishNoticeTimer: 0
+    };
+
+    const peers = new Map(); // peerId -> peer state
+    const campfireEmbers = [];
+    const waterRipples = [];
+
+    // Keys State
+    const keys = { up: false, down: false, left: false, right: false };
+
+    // ----------------------------------------------------
+    // 5. CANVAS INITIALIZATION & CRISP AUTO-SCALING
+    // ----------------------------------------------------
+    const canvas = document.getElementById('gameCanvas');
+    const ctx = canvas.getContext('2d');
+    ctx.imageSmoothingEnabled = false;
+
+    function resizeCanvas() {
+      const scale = Math.max(1, Math.min(
+        Math.floor(window.innerWidth / V_WIDTH),
+        Math.floor(window.innerHeight / V_HEIGHT)
+      ));
+      canvas.style.width = `${V_WIDTH * scale}px`;
+      canvas.style.height = `${V_HEIGHT * scale}px`;
+    }
+    window.addEventListener('resize', resizeCanvas);
+    resizeCanvas();
+
+    // ----------------------------------------------------
+    // 6. NETWORKING (TRYSTERO OVER BITTORRENT TRACKERS)
+    // ----------------------------------------------------
+    function getRoomCode() {
+      const hash = window.location.hash.replace('#', '').trim();
+      return hash.length > 0 ? hash : 'lobby';
+    }
+
+    const roomId = getRoomCode();
+    document.getElementById('roomLabel').textContent = `#${roomId}`;
+
+    let room, sendMove, sendChat, sendAction;
+
+    try {
+      room = joinRoom({ appId: APP_ID }, roomId);
+
+      const statusDot = document.getElementById('statusDot');
+      const connLabel = document.getElementById('connLabel');
+      const peerCount = document.getElementById('peerCount');
+
+      const actions = room.makeAction('move');
+      sendMove = actions[0];
+      const getMove = actions[1];
+
+      const chatActions = room.makeAction('chat');
+      sendChat = chatActions[0];
+      const getChat = chatActions[1];
+
+      const customActions = room.makeAction('action');
+      sendAction = customActions[0];
+      const getAction = customActions[1];
+
+      room.onPeerJoin(peerId => {
+        statusDot.classList.add('connected');
+        connLabel.textContent = 'P2P Online';
+
+        // Add placeholder peer
+        peers.set(peerId, {
+          id: peerId,
+          name: 'Camper',
+          theme: COLOR_THEMES[0],
+          x: 160,
+          y: 110,
+          targetX: 160,
+          targetY: 110,
+          dir: 'down',
+          isMoving: false,
+          state: 'idle',
+          animFrame: 0,
+          animTimer: 0,
+          bubble: null,
+          bubbleTimer: 0,
+          fishBite: false,
+          fishCatchNotice: null,
+          fishNoticeTimer: 0
+        });
+
+        updatePeerCountUI();
+
+        // Immediately transmit our current position and state to newcomer
+        sendMove({
+          x: Math.round(localPlayer.x),
+          y: Math.round(localPlayer.y),
+          dir: localPlayer.dir,
+          isMoving: localPlayer.isMoving,
+          name: localPlayer.name,
+          theme: localPlayer.theme,
+          state: localPlayer.state
+        }, peerId);
+      });
+
+      room.onPeerLeave(peerId => {
+        peers.delete(peerId);
+        updatePeerCountUI();
+      });
+
+      getMove((data, peerId) => {
+        const p = peers.get(peerId);
+        if (p) {
+          p.targetX = data.x;
+          p.targetY = data.y;
+          p.dir = data.dir || p.dir;
+          p.isMoving = data.isMoving;
+          if (data.name) p.name = data.name;
+          if (data.theme) p.theme = data.theme;
+          if (data.state) p.state = data.state;
+        }
+      });
+
+      getChat((data, peerId) => {
+        const p = peers.get(peerId);
+        if (p) {
+          p.bubble = data.text;
+          p.bubbleTimer = 4.0;
+          audio.playTextBlip();
+        }
+      });
+
+      getAction((data, peerId) => {
+        const p = peers.get(peerId);
+        if (p) {
+          if (data.type === 'sit') {
+            p.state = 'sitting';
+            p.targetX = data.x;
+            p.targetY = data.y;
+            p.dir = data.dir;
+          } else if (data.type === 'stand') {
+            p.state = 'idle';
+          } else if (data.type === 'fish') {
+            p.state = data.fishing ? 'fishing' : 'idle';
+            p.fishBite = data.bite || false;
+            if (data.catch) {
+              p.fishCatchNotice = data.catch;
+              p.fishNoticeTimer = 2.5;
+            }
+          }
+        }
+      });
+
+      function updatePeerCountUI() {
+        const count = peers.size + 1;
+        peerCount.textContent = `${count} ${count === 1 ? 'camper' : 'campers'}`;
+        if (peers.size === 0) {
+          statusDot.classList.remove('connected');
+          connLabel.textContent = 'In cozy lobby';
+        }
+      }
+
+    } catch (e) {
+      console.error('Trystero connection error:', e);
+      document.getElementById('connLabel').textContent = 'Offline Mode';
+    }
+
+    // ----------------------------------------------------
+    // 7. INPUT & INTERACTION HANDLING
+    // ----------------------------------------------------
+    const chatInput = document.getElementById('chatInput');
+
+    window.addEventListener('keydown', e => {
+      audio.init();
+      if (document.activeElement === chatInput) {
+        if (e.key === 'Enter') triggerChatSend();
+        return;
+      }
+
+      const k = e.key.toLowerCase();
+      if (k === 'w' || e.key === 'ArrowUp') keys.up = true;
+      if (k === 's' || e.key === 'ArrowDown') keys.down = true;
+      if (k === 'a' || e.key === 'ArrowLeft') keys.left = true;
+      if (k === 'd' || e.key === 'ArrowRight') keys.right = true;
+
+      if (k === 'e') {
+        toggleSit();
+        e.preventDefault();
+      }
+      if (e.code === 'Space') {
+        toggleFishing();
+        e.preventDefault();
+      }
+      if (e.key === 'Enter') {
+        chatInput.focus();
+        e.preventDefault();
+      }
+    });
+
+    window.addEventListener('keyup', e => {
+      const k = e.key.toLowerCase();
+      if (k === 'w' || e.key === 'ArrowUp') keys.up = false;
+      if (k === 's' || e.key === 'ArrowDown') keys.down = false;
+      if (k === 'a' || e.key === 'ArrowLeft') keys.left = false;
+      if (k === 'd' || e.key === 'ArrowRight') keys.right = false;
+    });
+
+    // Mobile Virtual Touch Buttons
+    const bindTouch = (id, k) => {
+      const btn = document.getElementById(id);
+      if (!btn) return;
+      btn.addEventListener('touchstart', e => { e.preventDefault(); audio.init(); keys[k] = true; }, { passive: false });
+      btn.addEventListener('touchend', e => { e.preventDefault(); keys[k] = false; }, { passive: false });
+      btn.addEventListener('touchcancel', () => { keys[k] = false; });
+    };
+    bindTouch('btnUp', 'up');
+    bindTouch('btnDown', 'down');
+    bindTouch('btnLeft', 'left');
+    bindTouch('btnRight', 'right');
+
+    document.getElementById('btnSit').addEventListener('click', () => { audio.init(); toggleSit(); });
+    document.getElementById('btnFish').addEventListener('click', () => { audio.init(); toggleFishing(); });
+
+    function toggleSit() {
+      if (localPlayer.state === 'fishing') return;
+
+      if (localPlayer.state === 'sitting') {
+        localPlayer.state = 'idle';
+        if (sendAction) sendAction({ type: 'stand' });
+        return;
+      }
+
+      // Check distance to closest log bench
+      for (const log of LOG_BENCHES) {
+        const dist = Math.hypot(localPlayer.x - log.sitX, localPlayer.y - log.sitY);
+        if (dist < 26) {
+          localPlayer.x = log.sitX;
+          localPlayer.y = log.sitY;
+          localPlayer.dir = log.faceDir;
+          localPlayer.state = 'sitting';
+          localPlayer.isMoving = false;
+          if (sendAction) sendAction({ type: 'sit', x: log.sitX, y: log.sitY, dir: log.faceDir });
+          audio.playTextBlip();
+          break;
+        }
+      }
+    }
+
+    function toggleFishing() {
+      if (localPlayer.state === 'sitting') return;
+
+      // Reel in action when bite is ready
+      if (localPlayer.state === 'fishing') {
+        if (localPlayer.fishBite) {
+          // Success catch!
+          const item = FISH_SPECIES[Math.floor(Math.random() * FISH_SPECIES.length)];
+          localPlayer.fishCatchNotice = `${item.icon} Caught ${item.name}!`;
+          localPlayer.fishNoticeTimer = 3.0;
+          localPlayer.fishBite = false;
+          localPlayer.state = 'idle';
+          audio.playCatchPing();
+          if (sendAction) sendAction({ type: 'fish', fishing: false, catch: localPlayer.fishCatchNotice });
+        } else {
+          // Canceled fishing
+          localPlayer.state = 'idle';
+          localPlayer.fishBite = false;
+          if (sendAction) sendAction({ type: 'fish', fishing: false });
+        }
+        return;
+      }
+
+      // Must be near water shore (facing right)
+      if (localPlayer.x >= LAKE_SHORE_X - 25) {
+        localPlayer.state = 'fishing';
+        localPlayer.dir = 'right';
+        localPlayer.isMoving = false;
+        localPlayer.fishTimer = Math.random() * 4 + 3; // 3 to 7 sec wait
+        localPlayer.fishBite = false;
+        audio.playSplash();
+        if (sendAction) sendAction({ type: 'fish', fishing: true, bite: false });
+      }
+    }
+
+    function triggerChatSend(customEmoji) {
+      audio.init();
+      const text = (customEmoji || chatInput.value).trim();
+      if (!text) return;
+
+      localPlayer.bubble = text;
+      localPlayer.bubbleTimer = 4.0;
+      audio.playTextBlip();
+
+      if (sendChat) sendChat({ text });
+
+      if (!customEmoji) {
+        chatInput.value = '';
+        chatInput.blur();
+      }
+    }
+
+    // Emoji Bar
+    document.querySelectorAll('.emoji-btn').forEach(btn => {
+      btn.addEventListener('click', () => triggerChatSend(btn.dataset.emoji));
+    });
+
+    // Audio Mute Toggle
+    document.getElementById('muteBtn').addEventListener('click', () => {
+      audio.toggle();
+    });
+
+    // Copy Invite Link
+    const toast = document.getElementById('toast');
+    document.getElementById('copyInviteBtn').addEventListener('click', () => {
+      audio.init();
+      const url = `${window.location.origin}${window.location.pathname}#${roomId}`;
+      navigator.clipboard.writeText(url).then(() => {
+        toast.classList.add('show');
+        setTimeout(() => toast.classList.remove('show'), 2000);
+      });
+    });
+
+    // ----------------------------------------------------
+    // 8. GAME TICK & UPDATE LOGIC (20Hz SYNC)
+    // ----------------------------------------------------
+    let lastTime = performance.now();
+    let networkTimer = 0;
+    const NET_INTERVAL = 1000 / 20; // 50ms (20Hz)
+
+    function update(dt, now) {
+      // 1. Campfire ember particles
+      if (Math.random() < 0.3) {
+        campfireEmbers.push({
+          x: FIRE_X + (Math.random() * 12 - 6),
+          y: FIRE_Y - 2,
+          vx: Math.random() * 10 - 5,
+          vy: -(Math.random() * 20 + 10),
+          life: 0.8,
+          maxLife: 0.8,
+          color: Math.random() < 0.6 ? '#ffb03a' : '#ff4422'
+        });
+      }
+      for (let i = campfireEmbers.length - 1; i >= 0; i--) {
+        const e = campfireEmbers[i];
+        e.x += e.vx * dt;
+        e.y += e.vy * dt;
+        e.life -= dt;
+        if (e.life <= 0) campfireEmbers.splice(i, 1);
+      }
+
+      // 2. Lake water ripples
+      if (Math.random() < 0.05) {
+        waterRipples.push({
+          x: LAKE_SHORE_X + 15 + Math.random() * (V_WIDTH - LAKE_SHORE_X - 25),
+          y: 30 + Math.random() * (V_HEIGHT - 60),
+          r: 1,
+          maxR: 8 + Math.random() * 6,
+          life: 1.5,
+          maxLife: 1.5
+        });
+      }
+      for (let i = waterRipples.length - 1; i >= 0; i--) {
+        const r = waterRipples[i];
+        r.r += 4 * dt;
+        r.life -= dt;
+        if (r.life <= 0) waterRipples.splice(i, 1);
+      }
+
+      // 3. Local Player Movement & Logic
+      if (localPlayer.state === 'idle') {
+        let dx = 0;
+        let dy = 0;
+        if (keys.up) dy -= 1;
+        if (keys.down) dy += 1;
+        if (keys.left) dx -= 1;
+        if (keys.right) dx += 1;
+
+        if (dx !== 0 || dy !== 0) {
+          const len = Math.hypot(dx, dy);
+          dx /= len;
+          dy /= len;
+
+          const speed = 55; // px/sec cozy walk
+          const nextX = localPlayer.x + dx * speed * dt;
+          const nextY = localPlayer.y + dy * speed * dt;
+
+          // Facing direction
+          if (Math.abs(dx) > Math.abs(dy)) {
+            localPlayer.dir = dx > 0 ? 'right' : 'left';
+          } else {
+            localPlayer.dir = dy > 0 ? 'down' : 'up';
+          }
+
+          // Arena and Water boundary collisions
+          if (nextX >= 16 && nextX <= LAKE_SHORE_X - 8) localPlayer.x = nextX;
+          if (nextY >= 32 && nextY <= V_HEIGHT - 16) localPlayer.y = nextY;
+
+          // Campfire box collision
+          if (Math.hypot(localPlayer.x - FIRE_X, localPlayer.y - FIRE_Y) < 14) {
+            localPlayer.x -= dx * speed * dt;
+            localPlayer.y -= dy * speed * dt;
+          }
+
+          localPlayer.isMoving = true;
+          localPlayer.animTimer += dt * 8;
+          localPlayer.animFrame = Math.floor(localPlayer.animTimer) % 4;
+        } else {
+          localPlayer.isMoving = false;
+          localPlayer.animFrame = 0;
+        }
+      } else {
+        localPlayer.isMoving = false;
+        localPlayer.animFrame = 0;
+      }
+
+      // 4. Fishing countdown & exclamation bite trigger
+      if (localPlayer.state === 'fishing' && !localPlayer.fishBite) {
+        localPlayer.fishTimer -= dt;
+        if (localPlayer.fishTimer <= 0) {
+          localPlayer.fishBite = true;
+          audio.playSplash();
+          if (sendAction) sendAction({ type: 'fish', fishing: true, bite: true });
+        }
+      }
+
+      // 5. Speech Bubble and Notice timers
+      if (localPlayer.bubbleTimer > 0) {
+        localPlayer.bubbleTimer -= dt;
+        if (localPlayer.bubbleTimer <= 0) localPlayer.bubble = null;
+      }
+      if (localPlayer.fishNoticeTimer > 0) {
+        localPlayer.fishNoticeTimer -= dt;
+        if (localPlayer.fishNoticeTimer <= 0) localPlayer.fishCatchNotice = null;
+      }
+
+      // 6. Peers entity interpolation (Lerp)
+      for (const peer of peers.values()) {
+        peer.x += (peer.targetX - peer.x) * 0.2;
+        peer.y += (peer.targetY - peer.y) * 0.2;
+
+        if (peer.isMoving) {
+          peer.animTimer += dt * 8;
+          peer.animFrame = Math.floor(peer.animTimer) % 4;
+        } else {
+          peer.animFrame = 0;
+        }
+
+        if (peer.bubbleTimer > 0) {
+          peer.bubbleTimer -= dt;
+          if (peer.bubbleTimer <= 0) peer.bubble = null;
+        }
+        if (peer.fishNoticeTimer > 0) {
+          peer.fishNoticeTimer -= dt;
+          if (peer.fishNoticeTimer <= 0) peer.fishCatchNotice = null;
+        }
+      }
+
+      // 7. Network sync throttled to 20Hz
+      networkTimer += dt * 1000;
+      if (networkTimer >= NET_INTERVAL) {
+        networkTimer = 0;
+        if (sendMove && (localPlayer.isMoving || Math.random() < 0.05)) {
+          sendMove({
+            x: Math.round(localPlayer.x),
+            y: Math.round(localPlayer.y),
+            dir: localPlayer.dir,
+            isMoving: localPlayer.isMoving,
+            state: localPlayer.state
+          });
+        }
+      }
+    }
+
+    // ----------------------------------------------------
+    // 9. PROCEDURAL PIXEL ART RENDERING ENGINE
+    // ----------------------------------------------------
+    function render(now) {
+      ctx.clearRect(0, 0, V_WIDTH, V_HEIGHT);
+
+      // --- LAYER 1: GRASSY MEADOW & STARRY SKY ---
+      ctx.fillStyle = '#0f171e'; // Deep night campsite ground
+      ctx.fillRect(0, 0, LAKE_SHORE_X, V_HEIGHT);
+
+      // Starry night twinkling background grass sparks
+      ctx.fillStyle = '#17232d';
+      for (let x = 12; x < LAKE_SHORE_X; x += 32) {
+        for (let y = 20; y < V_HEIGHT; y += 32) {
+          ctx.fillRect(x + ((y * 7) % 11), y, 2, 1);
+        }
+      }
+
+      // --- LAYER 2: LAKE SHORE WATER & RIPPLES ---
+      ctx.fillStyle = '#091c2b'; // Dark blue lake depth
+      ctx.fillRect(LAKE_SHORE_X, 0, V_WIDTH - LAKE_SHORE_X, V_HEIGHT);
+
+      // Shoreline foam wave line
+      ctx.fillStyle = '#17405e';
+      ctx.fillRect(LAKE_SHORE_X - 1, 0, 3, V_HEIGHT);
+
+      // Water ripples
+      ctx.strokeStyle = '#26618d';
+      ctx.lineWidth = 1;
+      for (const r of waterRipples) {
+        ctx.beginPath();
+        ctx.ellipse(r.x, r.y, r.r * 1.8, r.r * 0.6, 0, 0, Math.PI * 2);
+        ctx.stroke();
+      }
+
+      // --- LAYER 3: TREES (PINE PIXEL SHAPES) ---
+      for (const t of TREES) {
+        drawPixelPineTree(t.x, t.y);
+      }
+
+      // --- LAYER 4: LOG BENCHES ---
+      for (const log of LOG_BENCHES) {
+        ctx.fillStyle = '#422417'; // Bark
+        ctx.fillRect(log.x, log.y, log.w, log.h);
+        ctx.fillStyle = '#613824'; // Wood grain highlight
+        ctx.fillRect(log.x + 1, log.y + 1, log.w - 2, log.h - 3);
+        ctx.fillStyle = '#26140c'; // Shadow
+        ctx.fillRect(log.x, log.y + log.h - 1, log.w, 2);
+      }
+
+      // --- LAYER 5: ANIMATED CAMPFIRE & GLOW ---
+      drawAnimatedCampfire(now);
+
+      // --- LAYER 6: Y-SORTED ENTITIES (PLAYERS) ---
+      const renderQueue = [
+        { ...localPlayer, isMe: true },
+        ...Array.from(peers.values()).map(p => ({ ...p, isMe: false }))
+      ];
+      renderQueue.sort((a, b) => a.y - b.y);
+
+      for (const entity of renderQueue) {
+        drawChibiAvatar(entity);
+      }
+
+      // --- LAYER 7: NIGHT AMBIENCE VIGNETTE & WARM FIRE LIGHT OVERLAY ---
+      drawLightingOverlay(now);
+    }
+
+    function drawPixelPineTree(x, y) {
+      // Trunk
+      ctx.fillStyle = '#281710';
+      ctx.fillRect(x - 2, y + 10, 4, 8);
+      // Leaves (Tiered triangular pixel blocks)
+      ctx.fillStyle = '#0b201c'; // Dark pine shadow
+      ctx.fillRect(x - 10, y + 6, 20, 5);
+      ctx.fillRect(x - 8, y + 1, 16, 5);
+      ctx.fillRect(x - 5, y - 4, 10, 5);
+      ctx.fillRect(x - 2, y - 8, 4, 4);
+
+      ctx.fillStyle = '#163b33'; // Highlight foliage
+      ctx.fillRect(x - 8, y + 7, 16, 2);
+      ctx.fillRect(x - 6, y + 2, 12, 2);
+      ctx.fillRect(x - 3, y - 3, 6, 2);
+    }
+
+    function drawAnimatedCampfire(now) {
+      // Stone circle ring around fire
+      ctx.fillStyle = '#343842';
+      ctx.fillRect(FIRE_X - 10, FIRE_Y - 6, 20, 14);
+      ctx.fillStyle = '#4c525f';
+      ctx.fillRect(FIRE_X - 8, FIRE_Y - 4, 16, 10);
+      ctx.fillStyle = '#1e100c';
+      ctx.fillRect(FIRE_X - 6, FIRE_Y - 2, 12, 6);
+
+      // Animated multi-colored fire flames
+      const flick = Math.sin(now * 0.015) * 2;
+      const flick2 = Math.cos(now * 0.02) * 2;
+
+      // Outer Red/Orange flame
+      ctx.fillStyle = '#e8451b';
+      ctx.fillRect(FIRE_X - 5 + flick, FIRE_Y - 8, 10, 8);
+      ctx.fillRect(FIRE_X - 3, FIRE_Y - 11 + flick2, 6, 4);
+
+      // Inner Yellow core
+      ctx.fillStyle = '#ffd13b';
+      ctx.fillRect(FIRE_X - 3 + flick, FIRE_Y - 6, 6, 6);
+      ctx.fillRect(FIRE_X - 1, FIRE_Y - 9 + flick, 2, 4);
+
+      // Ember sparks
+      for (const e of campfireEmbers) {
+        ctx.fillStyle = e.color;
+        ctx.fillRect(Math.floor(e.x), Math.floor(e.y), 1, 1);
+      }
+    }
+
+    function drawChibiAvatar(p) {
+      const px = Math.floor(p.x);
+      const py = Math.floor(p.y);
+      const theme = p.theme || COLOR_THEMES[0];
+
+      ctx.save();
+
+      // Shadow underneath
+      ctx.fillStyle = 'rgba(5, 7, 12, 0.45)';
+      ctx.beginPath();
+      ctx.ellipse(px, py + 7, 7, 3, 0, 0, Math.PI * 2);
+      ctx.fill();
+
+      // Bobbing walking step offset
+      const walkBob = (p.isMoving && (p.animFrame === 1 || p.animFrame === 3)) ? -1 : 0;
+      const sitOffset = (p.state === 'sitting') ? 3 : 0;
+      const rootY = py + walkBob + sitOffset;
+
+      // 1. LEGS
+      if (p.state !== 'sitting') {
+        ctx.fillStyle = '#1a1d26'; // Dark pants
+        if (p.animFrame === 1) {
+          ctx.fillRect(px - 4, rootY + 3, 3, 4);
+          ctx.fillRect(px + 1, rootY + 2, 3, 3);
+        } else if (p.animFrame === 3) {
+          ctx.fillRect(px - 4, rootY + 2, 3, 3);
+          ctx.fillRect(px + 1, rootY + 3, 3, 4);
+        } else {
+          ctx.fillRect(px - 4, rootY + 3, 3, 4);
+          ctx.fillRect(px + 1, rootY + 3, 3, 4);
+        }
+      }
+
+      // 2. TORSO / SHIRT
+      ctx.fillStyle = theme.shirt;
+      ctx.fillRect(px - 5, rootY - 3, 10, 6);
+
+      // 3. HEAD & SKIN
+      ctx.fillStyle = theme.skin;
+      ctx.fillRect(px - 5, rootY - 11, 10, 8);
+
+      // 4. EYES (Facing Directions)
+      ctx.fillStyle = '#111';
+      if (p.dir === 'down') {
+        ctx.fillRect(px - 3, rootY - 8, 2, 2);
+        ctx.fillRect(px + 1, rootY - 8, 2, 2);
+      } else if (p.dir === 'left') {
+        ctx.fillRect(px - 4, rootY - 8, 2, 2);
+      } else if (p.dir === 'right') {
+        ctx.fillRect(px + 2, rootY - 8, 2, 2);
+      } // If up, back of head shown, no eyes
+
+      // 5. HAIR
+      ctx.fillStyle = theme.hair;
+      ctx.fillRect(px - 6, rootY - 13, 12, 4);
+      if (p.dir === 'down') {
+        ctx.fillRect(px - 6, rootY - 10, 2, 4);
+        ctx.fillRect(px + 4, rootY - 10, 2, 4);
+        ctx.fillRect(px - 2, rootY - 10, 4, 1);
+      } else if (p.dir === 'up') {
+        ctx.fillRect(px - 6, rootY - 10, 12, 7); // Full back hair
+      } else if (p.dir === 'left') {
+        ctx.fillRect(px - 6, rootY - 10, 3, 5);
+        ctx.fillRect(px + 3, rootY - 10, 3, 6);
+      } else if (p.dir === 'right') {
+        ctx.fillRect(px + 3, rootY - 10, 3, 5);
+        ctx.fillRect(px - 6, rootY - 10, 3, 6);
+      }
+
+      // 6. FISHING ROD & LINE
+      if (p.state === 'fishing') {
+        ctx.fillStyle = '#8f563b';
+        // Rod angled toward water
+        ctx.fillRect(px + 4, rootY - 4, 12, 1);
+        ctx.fillRect(px + 16, rootY - 8, 8, 1);
+
+        // Fishing string into water
+        ctx.strokeStyle = 'rgba(255, 255, 255, 0.5)';
+        ctx.beginPath();
+        ctx.moveTo(px + 24, rootY - 7);
+        const bobberX = px + 36;
+        const bobberY = rootY + 6;
+        ctx.lineTo(bobberX, bobberY);
+        ctx.stroke();
+
+        // Red float bobber
+        ctx.fillStyle = p.fishBite ? '#ffff00' : '#ff3344';
+        ctx.fillRect(bobberX - 1, bobberY - 1, 3, 3);
+
+        // Exclamation Mark above head when bite triggers
+        if (p.fishBite) {
+          ctx.font = 'bold 12px monospace';
+          ctx.fillStyle = '#ffe600';
+          ctx.fillText('❗', px - 4, rootY - 18);
+        }
+      }
+
+      // 7. NAME TAG
+      ctx.font = '8px monospace';
+      ctx.textAlign = 'center';
+      ctx.fillStyle = '#a6b4c9';
+      ctx.fillText(p.name + (p.isMe ? ' (You)' : ''), px, rootY - 16);
+
+      // 8. OVERHEAD SPEECH BUBBLE
+      if (p.bubble) {
+        ctx.font = '9px monospace';
+        const metrics = ctx.measureText(p.bubble);
+        const bubbleW = Math.max(metrics.width + 10, 24);
+        const bubbleH = 14;
+        const bubbleX = Math.floor(px - bubbleW / 2);
+        const bubbleY = Math.floor(rootY - 33);
+
+        ctx.fillStyle = '#ffffff';
+        ctx.fillRect(bubbleX, bubbleY, bubbleW, bubbleH);
+        // Small speech triangle pointer
+        ctx.beginPath();
+        ctx.moveTo(px - 3, bubbleY + bubbleH);
+        ctx.lineTo(px, bubbleY + bubbleH + 3);
+        ctx.lineTo(px + 3, bubbleY + bubbleH);
+        ctx.fill();
+
+        ctx.fillStyle = '#0b0e14';
+        ctx.fillText(p.bubble, px, bubbleY + 10);
+      }
+
+      // 9. FISH CATCH NOTICE
+      if (p.fishCatchNotice) {
+        ctx.font = 'bold 9px monospace';
+        ctx.fillStyle = '#ffdf59';
+        ctx.fillText(p.fishCatchNotice, px, rootY - 26);
+      }
+
+      ctx.restore();
+    }
+
+    function drawLightingOverlay(now) {
+      // Warm Radial Gradient from Campfire Light
+      const glow = Math.sin(now * 0.005) * 4;
+      const rad = ctx.createRadialGradient(FIRE_X, FIRE_Y, 15, FIRE_X, FIRE_Y, 110 + glow);
+      rad.addColorStop(0, 'rgba(255, 175, 75, 0.28)');
+      rad.addColorStop(0.5, 'rgba(255, 115, 35, 0.12)');
+      rad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+
+      ctx.fillStyle = rad;
+      ctx.fillRect(0, 0, V_WIDTH, V_HEIGHT);
+
+      // Night vignette
+      const vignette = ctx.createRadialGradient(V_WIDTH / 2, V_HEIGHT / 2, 80, V_WIDTH / 2, V_HEIGHT / 2, 220);
+      vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+      vignette.addColorStop(1, 'rgba(3, 5, 8, 0.45)');
+      ctx.fillStyle = vignette;
+      ctx.fillRect(0, 0, V_WIDTH, V_HEIGHT);
+    }
+
+    // ----------------------------------------------------
+    // 10. MAIN ANIMATION LOOP
+    // ----------------------------------------------------
+    function loop(now) {
+      const dt = Math.min((now - lastTime) / 1000, 0.1);
+      lastTime = now;
+
+      update(dt, now);
+      render(now);
+
+      requestAnimationFrame(loop);
+    }
+
+    requestAnimationFrame(loop);
+
+  </script>
+</body>
+</html>
