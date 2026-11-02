@@ -2,7 +2,7 @@
 <html lang="en">
 <head>
   <meta charset="UTF-8" />
-  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no" />
+  <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no, viewport-fit=cover" />
   <title>Pixel Campfire Lounge ⛺</title>
   <style>
     /* CSS Reset & Variables */
@@ -24,19 +24,19 @@
       padding: 0;
       user-select: none;
       -webkit-user-select: none;
+      -webkit-tap-highlight-color: transparent;
     }
 
     html, body {
       width: 100%;
       height: 100%;
+      height: 100dvh;
       overflow: hidden;
       background-color: var(--bg-dark);
       font-family: 'Courier New', Courier, monospace, system-ui;
       color: var(--text-main);
-      display: flex;
-      flex-direction: column;
-      align-items: center;
-      justify-content: center;
+      overscroll-behavior: none;
+      touch-action: manipulation;
     }
 
     /* Pixel Art Scaled Canvas Wrapper */
@@ -44,38 +44,57 @@
       position: relative;
       width: 100vw;
       height: 100vh;
+      height: 100dvh;
+      overflow: hidden;
       display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       background: #080a0f;
     }
 
+    .canvas-frame {
+      position: relative;
+      display: inline-flex;
+      align-items: center;
+      justify-content: center;
+      padding: 3px;
+      border-radius: 8px;
+      background: linear-gradient(135deg, rgba(255, 255, 255, 0.16), rgba(255, 255, 255, 0.03) 50%, rgba(255, 158, 68, 0.2));
+      box-shadow: 0 14px 40px rgba(0, 0, 0, 0.85), 0 0 24px rgba(255, 158, 68, 0.12);
+      transition: transform 0.25s ease, box-shadow 0.25s ease;
+    }
+
     canvas#gameCanvas {
+      display: block;
       image-rendering: -moz-crisp-edges;
       image-rendering: -webkit-crisp-edges;
       image-rendering: pixelated;
       image-rendering: crisp-edges;
       background-color: #0b111a;
-      box-shadow: 0 10px 40px rgba(0, 0, 0, 0.8);
+      cursor: crosshair;
+      touch-action: none;
+      border-radius: 6px;
     }
 
     /* Minimalist Retro Top HUD */
     .hud-top {
       position: absolute;
-      top: 12px;
-      left: 12px;
-      right: 12px;
+      top: max(10px, env(safe-area-inset-top, 10px));
+      left: max(10px, env(safe-area-inset-left, 10px));
+      right: max(10px, env(safe-area-inset-right, 10px));
       display: flex;
       justify-content: space-between;
       align-items: center;
       pointer-events: none;
-      z-index: 20;
+      z-index: 30;
+      gap: 6px;
     }
 
     .hud-group {
       display: flex;
       align-items: center;
-      gap: 8px;
+      gap: 6px;
       pointer-events: auto;
     }
 
@@ -83,16 +102,17 @@
       background: var(--panel-bg);
       border: 1px solid var(--border-color);
       border-radius: 999px;
-      padding: 5px 12px;
+      padding: 5px 10px;
       font-size: 11px;
       font-weight: 700;
       letter-spacing: 0.5px;
       display: flex;
       align-items: center;
-      gap: 6px;
+      gap: 5px;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
       backdrop-filter: blur(8px);
       -webkit-backdrop-filter: blur(8px);
+      white-space: nowrap;
     }
 
     .status-dot {
@@ -101,6 +121,7 @@
       border-radius: 50%;
       background: var(--accent-yellow);
       box-shadow: 0 0 6px var(--accent-yellow);
+      flex-shrink: 0;
     }
     .status-dot.connected {
       background: var(--accent-green);
@@ -121,16 +142,20 @@
       font-family: inherit;
       transition: all 0.15s ease;
       box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      touch-action: manipulation;
+      white-space: nowrap;
     }
-    .hud-btn:hover {
+    .hud-btn:hover, .hud-btn:active {
       background: rgba(255, 255, 255, 0.18);
       transform: translateY(-1px);
     }
-    .hud-btn:active {
-      transform: translateY(1px);
+
+    #fullscreenBtn {
+      font-size: 13px;
+      padding: 5px 9px;
     }
 
-    /* Instructions helper hint */
+    /* Desktop Instructions helper hint */
     .interaction-hint {
       position: absolute;
       top: 50px;
@@ -145,16 +170,17 @@
       pointer-events: none;
       white-space: nowrap;
       backdrop-filter: blur(4px);
+      z-index: 20;
     }
     .interaction-hint span {
       color: var(--accent-yellow);
       font-weight: bold;
     }
 
-    /* Bottom Chat & Reaction Bar */
+    /* Desktop Bottom Chat & Reaction Bar */
     .hud-bottom {
       position: absolute;
-      bottom: 14px;
+      bottom: max(14px, env(safe-area-inset-bottom, 14px));
       left: 50%;
       transform: translateX(-50%);
       display: flex;
@@ -172,15 +198,18 @@
 
     .emoji-btn {
       background: rgba(255, 255, 255, 0.08);
-      border: none;
-      font-size: 14px;
-      padding: 4px 8px;
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      font-size: 15px;
+      padding: 5px 8px;
       border-radius: 999px;
       cursor: pointer;
-      transition: transform 0.12s ease;
+      line-height: 1;
+      transition: transform 0.12s ease, background-color 0.12s ease;
+      touch-action: manipulation;
     }
-    .emoji-btn:hover {
+    .emoji-btn:active {
       transform: scale(1.25);
+      background: rgba(255, 158, 68, 0.3);
     }
 
     .chat-input {
@@ -200,59 +229,297 @@
       border-color: var(--accent-warm);
     }
 
-    /* Mobile On-Screen Controls */
-    .mobile-controls {
-      position: absolute;
-      bottom: 60px;
-      left: 14px;
+    /* Mobile Gamepad System */
+    .mobile-gamepad {
       display: none;
-      z-index: 25;
-      grid-template-columns: repeat(3, 40px);
-      grid-template-rows: repeat(3, 40px);
-      gap: 4px;
-    }
-    .mobile-actions {
-      position: absolute;
-      bottom: 60px;
-      right: 14px;
-      display: none;
-      flex-direction: column;
-      gap: 8px;
-      z-index: 25;
     }
 
-    .touch-btn {
-      background: rgba(255, 255, 255, 0.12);
-      border: 1px solid rgba(255, 255, 255, 0.2);
-      color: #fff;
-      font-size: 12px;
-      font-weight: bold;
-      border-radius: 8px;
+    /* Retro Console Cross D-Pad */
+    .dpad-wrapper {
+      position: relative;
+      width: 142px;
+      height: 142px;
+      border-radius: 50%;
+      background: radial-gradient(circle, rgba(26, 33, 48, 0.95) 0%, rgba(12, 16, 25, 0.95) 100%);
+      border: 1.5px solid rgba(255, 255, 255, 0.1);
+      box-shadow: inset 0 2px 6px rgba(255, 255, 255, 0.08), 0 10px 24px rgba(0, 0, 0, 0.65);
       display: flex;
+      align-items: center;
+      justify-content: center;
+      touch-action: none;
+    }
+    .dpad {
+      position: relative;
+      width: 136px;
+      height: 136px;
+      touch-action: none;
+      -webkit-touch-callout: none;
+      user-select: none;
+    }
+    .dpad-key {
+      position: absolute;
+      width: 44px;
+      height: 44px;
+      background: linear-gradient(145deg, #222b3e, #141a28);
+      border: 1.5px solid rgba(255, 255, 255, 0.15);
+      color: #f0f3fc;
+      font-size: 15px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      box-shadow: 0 4px 10px rgba(0, 0, 0, 0.5), inset 0 1px 1px rgba(255, 255, 255, 0.15);
+      transition: background 0.08s ease, transform 0.08s ease, border-color 0.08s ease, box-shadow 0.08s ease;
+      touch-action: none;
+      cursor: pointer;
+    }
+    .dpad-key.active {
+      background: linear-gradient(145deg, #e87b28, #ff9e44);
+      color: #0b0e14;
+      border-color: #ffd043;
+      transform: scale(0.92);
+      box-shadow: 0 0 16px rgba(255, 158, 68, 0.8), inset 0 1px 2px rgba(255, 255, 255, 0.4);
+    }
+    .dpad-up {
+      top: 0;
+      left: 46px;
+      border-radius: 12px 12px 4px 4px;
+    }
+    .dpad-down {
+      bottom: 0;
+      left: 46px;
+      border-radius: 4px 4px 12px 12px;
+    }
+    .dpad-left {
+      top: 46px;
+      left: 0;
+      border-radius: 12px 4px 4px 12px;
+    }
+    .dpad-right {
+      top: 46px;
+      right: 0;
+      border-radius: 4px 12px 12px 4px;
+    }
+    .dpad-center {
+      position: absolute;
+      top: 46px;
+      left: 46px;
+      width: 44px;
+      height: 44px;
+      background: rgba(14, 18, 28, 0.95);
+      border: 1px solid rgba(255, 255, 255, 0.08);
+      border-radius: 6px;
+      pointer-events: none;
+    }
+
+    /* Action Buttons */
+    .action-buttons {
+      display: flex;
+      flex-direction: column;
+      gap: 14px;
+      touch-action: manipulation;
+    }
+    .action-btn {
+      width: 62px;
+      height: 62px;
+      border-radius: 50%;
+      background: linear-gradient(145deg, #222b3e, #141a28);
+      border: 2px solid rgba(255, 255, 255, 0.16);
+      color: #fff;
+      display: flex;
+      flex-direction: column;
       align-items: center;
       justify-content: center;
       cursor: pointer;
       touch-action: manipulation;
+      box-shadow: 0 6px 20px rgba(0, 0, 0, 0.6), inset 0 1px 2px rgba(255, 255, 255, 0.16);
+      transition: transform 0.1s ease, border-color 0.1s ease, background 0.1s ease, box-shadow 0.1s ease;
+      font-family: inherit;
     }
-    .touch-action-btn {
-      width: 48px;
-      height: 48px;
-      border-radius: 50%;
-      background: rgba(255, 158, 68, 0.25);
-      border: 1px solid var(--accent-warm);
+    .action-btn:active, .action-btn.active {
+      transform: scale(0.92);
+      border-color: var(--accent-warm);
+      background: linear-gradient(145deg, #30261f, #1b1612);
+      box-shadow: 0 2px 8px rgba(0, 0, 0, 0.8), 0 0 18px rgba(255, 158, 68, 0.6);
+    }
+    .action-btn .btn-icon {
+      font-size: 22px;
+      line-height: 1;
+    }
+    .action-btn .btn-text {
+      font-size: 9px;
+      font-weight: 800;
+      text-transform: uppercase;
+      margin-top: 2px;
+      letter-spacing: 0.5px;
+      color: var(--text-muted);
     }
 
-    @media (pointer: coarse), (max-width: 768px) {
-      .mobile-controls { display: grid; }
-      .mobile-actions { display: flex; }
-      .hud-bottom { bottom: 10px; }
-      .interaction-hint { display: none; }
+    /* Interactive Proximity Highlight */
+    .action-btn.can-interact {
+      border-color: var(--accent-warm);
+      animation: pulse-border 1.4s infinite;
+    }
+    .action-btn.can-interact .btn-text {
+      color: var(--accent-warm);
+    }
+    .action-btn.sitting {
+      border-color: var(--accent-blue);
+      background: rgba(77, 179, 255, 0.25);
+    }
+    .action-btn.sitting .btn-text {
+      color: var(--accent-blue);
+    }
+
+    /* Fish Bite Flash Alert */
+    .action-btn.bite-alert {
+      border-color: var(--accent-yellow);
+      background: rgba(255, 208, 67, 0.4);
+      animation: bite-pulse 0.35s infinite alternate;
+      box-shadow: 0 0 20px var(--accent-yellow);
+    }
+    .action-btn.bite-alert .btn-text {
+      color: #ff3344;
+      font-weight: 900;
+    }
+    @keyframes bite-pulse {
+      from { transform: scale(1); box-shadow: 0 0 10px var(--accent-yellow); }
+      to { transform: scale(1.18); box-shadow: 0 0 24px #ff3344; }
+    }
+    @keyframes pulse-border {
+      0%, 100% { box-shadow: 0 0 4px rgba(255, 158, 68, 0.3); }
+      50% { box-shadow: 0 0 14px rgba(255, 158, 68, 0.85); }
+    }
+
+    /* Mobile Center Bar (Reactions & Chat Button) */
+    .mobile-center-bar {
+      display: flex;
+      align-items: center;
+      gap: 6px;
+    }
+    .mobile-emoji-bar {
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      background: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      padding: 4px 8px;
+      border-radius: 999px;
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+    }
+    .mobile-chat-toggle {
+      background: var(--panel-bg);
+      border: 1px solid var(--border-color);
+      color: var(--text-main);
+      padding: 6px 12px;
+      border-radius: 999px;
+      font-size: 12px;
+      font-weight: 700;
+      font-family: inherit;
+      cursor: pointer;
+      display: flex;
+      align-items: center;
+      gap: 4px;
+      box-shadow: 0 4px 12px rgba(0, 0, 0, 0.4);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      touch-action: manipulation;
+    }
+    .mobile-chat-toggle:active {
+      transform: scale(0.95);
+      background: rgba(255, 158, 68, 0.25);
+    }
+
+    /* Mobile Chat Drawer / Bottom Sheet */
+    .mobile-chat-modal {
+      position: fixed;
+      bottom: 0;
+      left: 0;
+      right: 0;
+      top: 0;
+      background: rgba(0, 0, 0, 0.6);
+      backdrop-filter: blur(4px);
+      -webkit-backdrop-filter: blur(4px);
+      z-index: 1000;
+      display: flex;
+      align-items: flex-end;
+      justify-content: center;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.2s ease;
+    }
+    .mobile-chat-modal.open {
+      opacity: 1;
+      pointer-events: auto;
+    }
+    .chat-modal-content {
+      width: 100%;
+      max-width: 500px;
+      background: #141926;
+      border-top: 1px solid var(--border-color);
+      border-radius: 16px 16px 0 0;
+      padding: 16px;
+      padding-bottom: max(16px, env(safe-area-inset-bottom, 16px));
+      display: flex;
+      gap: 8px;
+      align-items: center;
+      box-shadow: 0 -8px 30px rgba(0, 0, 0, 0.7);
+      transform: translateY(100%);
+      transition: transform 0.25s cubic-bezier(0.16, 1, 0.3, 1);
+    }
+    .mobile-chat-modal.open .chat-modal-content {
+      transform: translateY(0);
+    }
+    .mobile-chat-input {
+      flex: 1;
+      background: rgba(0, 0, 0, 0.45);
+      border: 1px solid rgba(255, 255, 255, 0.2);
+      border-radius: 999px;
+      color: #fff;
+      font-family: inherit;
+      font-size: 16px; /* 16px prevents iOS Safari auto zoom */
+      padding: 9px 14px;
+      outline: none;
+    }
+    .mobile-chat-input:focus {
+      border-color: var(--accent-warm);
+    }
+    .chat-send-btn {
+      background: var(--accent-warm);
+      color: #0b0e14;
+      font-weight: 800;
+      border: none;
+      border-radius: 999px;
+      padding: 9px 14px;
+      font-size: 13px;
+      cursor: pointer;
+      font-family: inherit;
+      white-space: nowrap;
+      touch-action: manipulation;
+    }
+    .chat-send-btn:active {
+      transform: scale(0.95);
+    }
+    .chat-close-btn {
+      background: rgba(255, 255, 255, 0.1);
+      color: #fff;
+      border: none;
+      border-radius: 50%;
+      width: 34px;
+      height: 34px;
+      display: flex;
+      align-items: center;
+      justify-content: center;
+      cursor: pointer;
+      font-size: 15px;
+      touch-action: manipulation;
     }
 
     /* Toast overlay */
     #toast {
       position: absolute;
-      top: 20px;
+      top: max(20px, env(safe-area-inset-top, 20px));
       left: 50%;
       transform: translateX(-50%) translateY(-20px);
       background: #192030;
@@ -271,20 +538,134 @@
       transform: translateX(-50%) translateY(0);
       opacity: 1;
     }
+
+    /* ====================================================
+       RESPONSIVE MOBILE STYLES (PORTRAIT & LANDSCAPE)
+       ==================================================== */
+    @media (pointer: coarse), (max-width: 768px) {
+      .hud-bottom { display: none; }
+      .interaction-hint { display: none; }
+      .mobile-gamepad { display: flex; }
+    }
+
+    /* Mobile Portrait Layout */
+    @media (max-width: 768px) and (orientation: portrait), (pointer: coarse) and (orientation: portrait) {
+      #viewport {
+        display: flex;
+        flex-direction: column;
+        justify-content: space-between;
+        align-items: center;
+        padding-top: max(48px, calc(env(safe-area-inset-top, 0px) + 42px));
+        padding-bottom: max(10px, env(safe-area-inset-bottom, 10px));
+        padding-left: max(8px, env(safe-area-inset-left, 8px));
+        padding-right: max(8px, env(safe-area-inset-right, 8px));
+      }
+      .canvas-frame {
+        flex: 0 0 auto;
+        margin: auto 0;
+      }
+      .mobile-gamepad {
+        flex-direction: column;
+        align-items: center;
+        justify-content: flex-end;
+        width: 100%;
+        max-width: 440px;
+        gap: 12px;
+        z-index: 25;
+        padding-bottom: 2px;
+      }
+      .mobile-center-bar {
+        width: 100%;
+        justify-content: center;
+      }
+      .mobile-controls-row {
+        width: 100%;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        padding: 0 8px;
+      }
+    }
+
+    /* Mobile Landscape Layout */
+    @media (max-width: 950px) and (orientation: landscape), (pointer: coarse) and (orientation: landscape) {
+      #viewport {
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        padding: 0;
+      }
+      .canvas-frame {
+        position: relative;
+        z-index: 5;
+      }
+      .mobile-gamepad {
+        position: absolute;
+        top: 0;
+        left: 0;
+        right: 0;
+        bottom: 0;
+        pointer-events: none;
+        z-index: 25;
+      }
+      .mobile-controls-row {
+        position: absolute;
+        bottom: max(14px, env(safe-area-inset-bottom, 14px));
+        left: max(16px, env(safe-area-inset-left, 16px));
+        right: max(16px, env(safe-area-inset-right, 16px));
+        display: flex;
+        justify-content: space-between;
+        align-items: flex-end;
+        pointer-events: none;
+      }
+      .dpad-wrapper, .action-buttons {
+        pointer-events: auto;
+        opacity: 0.9;
+        transition: opacity 0.2s ease;
+      }
+      .dpad-wrapper:active, .action-buttons:active {
+        opacity: 1;
+      }
+      .mobile-center-bar {
+        position: absolute;
+        bottom: max(10px, env(safe-area-inset-bottom, 10px));
+        left: 50%;
+        transform: translateX(-50%);
+        pointer-events: auto;
+        opacity: 0.92;
+      }
+    }
+
+    /* Compact Top HUD on narrow screens */
+    @media (max-width: 600px) {
+      .hud-pill {
+        padding: 4px 7px;
+        font-size: 10px;
+      }
+      .hud-btn {
+        padding: 4px 7px;
+        font-size: 10px;
+      }
+      #connLabel {
+        display: none;
+      }
+    }
   </style>
 </head>
 <body>
   <div id="viewport">
-    <canvas id="gameCanvas" width="360" height="202"></canvas>
+    <div class="canvas-frame" id="canvasFrame">
+      <canvas id="gameCanvas" width="360" height="202"></canvas>
+    </div>
 
     <!-- Top Minimalist Retro HUD -->
     <header class="hud-top">
       <div class="hud-group">
-        <div class="hud-pill">
+        <div class="hud-pill" id="pillStatus">
           <div id="statusDot" class="status-dot"></div>
           <span id="connLabel">Searching peers...</span>
         </div>
-        <div class="hud-pill">
+        <div class="hud-pill" id="pillCamper">
           <span>👥</span>
           <span id="peerCount">1 camper</span>
         </div>
@@ -298,16 +679,19 @@
         <button id="muteBtn" class="hud-btn" title="Toggle Nature Sounds">
           <span id="muteIcon">🔇 Audio</span>
         </button>
+        <button id="fullscreenBtn" class="hud-btn" title="Toggle Fullscreen">
+          <span id="fullscreenIcon">⛶</span>
+        </button>
       </div>
     </header>
 
-    <!-- Context Hint -->
+    <!-- Context Hint (Desktop) -->
     <div id="interactionHint" class="interaction-hint">
       <span>WASD</span> Walk &bull; <span>E</span> Sit on Log &bull; <span>SPACE</span> Fish near Lake &bull; <span>ENTER</span> Chat
     </div>
 
-    <!-- Bottom Quick Chat / Emoji Bar -->
-    <footer class="hud-bottom">
+    <!-- Bottom Quick Chat / Emoji Bar (Desktop) -->
+    <footer class="hud-bottom" id="desktopHudBottom">
       <button class="emoji-btn" data-emoji="🔥">🔥</button>
       <button class="emoji-btn" data-emoji="🐟">🐟</button>
       <button class="emoji-btn" data-emoji="☕">☕</button>
@@ -316,21 +700,56 @@
       <input type="text" id="chatInput" class="chat-input" placeholder="Say something..." maxlength="30" autocomplete="off" />
     </footer>
 
-    <!-- Mobile Virtual Controls -->
-    <div class="mobile-controls">
-      <div></div>
-      <div class="touch-btn" id="btnUp">▲</div>
-      <div></div>
-      <div class="touch-btn" id="btnLeft">◀</div>
-      <div></div>
-      <div class="touch-btn" id="btnRight">▶</div>
-      <div></div>
-      <div class="touch-btn" id="btnDown">▼</div>
-      <div></div>
+    <!-- Mobile Virtual Gamepad (Ergonomic Touch Controls) -->
+    <div class="mobile-gamepad" id="mobileGamepad">
+      <!-- Center Quick Reactions & Chat Trigger -->
+      <div class="mobile-center-bar">
+        <div class="mobile-emoji-bar">
+          <button type="button" class="emoji-btn" data-emoji="🔥">🔥</button>
+          <button type="button" class="emoji-btn" data-emoji="🐟">🐟</button>
+          <button type="button" class="emoji-btn" data-emoji="☕">☕</button>
+          <button type="button" class="emoji-btn" data-emoji="❤️">❤️</button>
+          <button type="button" class="emoji-btn" data-emoji="💤">💤</button>
+        </div>
+        <button type="button" class="mobile-chat-toggle" id="openChatBtn">
+          <span>💬 Chat</span>
+        </button>
+      </div>
+
+      <!-- Controls Row: D-Pad & Actions -->
+      <div class="mobile-controls-row">
+        <!-- Ergonomic D-Pad -->
+        <div class="dpad-wrapper">
+          <div class="dpad" id="dpad">
+            <button type="button" class="dpad-key dpad-up" id="btnUp" aria-label="Up">▲</button>
+            <button type="button" class="dpad-key dpad-left" id="btnLeft" aria-label="Left">◀</button>
+            <div class="dpad-center"></div>
+            <button type="button" class="dpad-key dpad-right" id="btnRight" aria-label="Right">▶</button>
+            <button type="button" class="dpad-key dpad-down" id="btnDown" aria-label="Down">▼</button>
+          </div>
+        </div>
+
+        <!-- Action Buttons -->
+        <div class="action-buttons">
+          <button type="button" class="action-btn" id="btnSit" title="Sit or Stand">
+            <span class="btn-icon" id="sitIcon">🪑</span>
+            <span class="btn-text" id="sitLabel">Sit</span>
+          </button>
+          <button type="button" class="action-btn" id="btnFish" title="Fish">
+            <span class="btn-icon" id="fishIcon">🎣</span>
+            <span class="btn-text" id="fishLabel">Fish</span>
+          </button>
+        </div>
+      </div>
     </div>
-    <div class="mobile-actions">
-      <button class="touch-btn touch-action-btn" id="btnSit" title="Sit">🪑</button>
-      <button class="touch-btn touch-action-btn" id="btnFish" title="Fish">🎣</button>
+
+    <!-- Mobile Chat Drawer / Dialog -->
+    <div class="mobile-chat-modal" id="chatModal">
+      <div class="chat-modal-content">
+        <input type="text" id="mobileChatInput" class="mobile-chat-input" placeholder="Say something cozy..." maxlength="30" autocomplete="off" />
+        <button type="button" id="mobileChatSend" class="chat-send-btn">Send ✈️</button>
+        <button type="button" id="mobileChatClose" class="chat-close-btn" aria-label="Close">✕</button>
+      </div>
     </div>
 
     <div id="toast">Invite link copied!</div>
@@ -392,12 +811,13 @@
       toggle() {
         this.init();
         this.enabled = !this.enabled;
+        const isMobile = window.innerWidth <= 600;
         if (this.enabled) {
           this.startFireAmbience();
-          document.getElementById('muteIcon').textContent = '🔊 Audio On';
+          document.getElementById('muteIcon').textContent = isMobile ? '🔊' : '🔊 Audio';
         } else {
           this.stopFireAmbience();
-          document.getElementById('muteIcon').textContent = '🔇 Audio Off';
+          document.getElementById('muteIcon').textContent = isMobile ? '🔇' : '🔇 Audio';
         }
         return this.enabled;
       }
@@ -546,15 +966,81 @@
     ctx.imageSmoothingEnabled = false;
 
     function resizeCanvas() {
-      const scale = Math.max(1, Math.min(
-        Math.floor(window.innerWidth / V_WIDTH),
-        Math.floor(window.innerHeight / V_HEIGHT)
-      ));
-      canvas.style.width = `${V_WIDTH * scale}px`;
-      canvas.style.height = `${V_HEIGHT * scale}px`;
+      const isMobile = window.innerWidth <= 768 || window.matchMedia('(pointer: coarse)').matches;
+      const isPortrait = window.innerHeight > window.innerWidth;
+
+      let targetW, targetH;
+
+      if (isMobile && isPortrait) {
+        // Mobile Portrait: fit width comfortably, leaving lower half for gamepad
+        const maxW = Math.min(window.innerWidth - 18, 440);
+        const maxH = (window.innerHeight - 80) * 0.46;
+        const scale = Math.min(maxW / V_WIDTH, maxH / V_HEIGHT);
+        targetW = Math.floor(V_WIDTH * scale);
+        targetH = Math.floor(V_HEIGHT * scale);
+      } else if (isMobile && !isPortrait) {
+        // Mobile Landscape: fit height cleanly
+        const maxW = window.innerWidth - 24;
+        const maxH = window.innerHeight - 18;
+        const scale = Math.min(maxW / V_WIDTH, maxH / V_HEIGHT);
+        targetW = Math.floor(V_WIDTH * scale);
+        targetH = Math.floor(V_HEIGHT * scale);
+      } else {
+        // Desktop: integer pixel scale for sharp rendering
+        let scale = Math.floor(Math.min(window.innerWidth / V_WIDTH, window.innerHeight / V_HEIGHT));
+        if (scale < 1) scale = Math.min(window.innerWidth / V_WIDTH, window.innerHeight / V_HEIGHT);
+        targetW = Math.floor(V_WIDTH * scale);
+        targetH = Math.floor(V_HEIGHT * scale);
+      }
+
+      canvas.style.width = `${Math.max(180, targetW)}px`;
+      canvas.style.height = `${Math.max(101, targetH)}px`;
     }
     window.addEventListener('resize', resizeCanvas);
+    window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 150));
     resizeCanvas();
+
+    // Fullscreen API Integration
+    const fullscreenBtn = document.getElementById('fullscreenBtn');
+    const fullscreenIcon = document.getElementById('fullscreenIcon');
+
+    function isFullscreenActive() {
+      return !!(
+        document.fullscreenElement ||
+        document.webkitFullscreenElement ||
+        document.mozFullScreenElement ||
+        document.msFullscreenElement
+      );
+    }
+
+    function toggleFullscreen() {
+      audio.init();
+      const doc = document;
+      const docEl = document.documentElement;
+
+      if (!isFullscreenActive()) {
+        const req = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.mozRequestFullScreen || docEl.msRequestFullscreen;
+        if (req) {
+          req.call(docEl).catch(err => console.log('Fullscreen error:', err));
+        }
+      } else {
+        const exit = doc.exitFullscreen || doc.webkitExitFullscreen || doc.mozCancelFullScreen || doc.msExitFullscreen;
+        if (exit) {
+          exit.call(doc).catch(err => console.log('Exit fullscreen error:', err));
+        }
+      }
+    }
+
+    function updateFullscreenUI() {
+      if (fullscreenIcon) {
+        fullscreenIcon.textContent = isFullscreenActive() ? '🗗' : '⛶';
+      }
+      setTimeout(resizeCanvas, 120);
+    }
+
+    fullscreenBtn?.addEventListener('click', toggleFullscreen);
+    document.addEventListener('fullscreenchange', updateFullscreenUI);
+    document.addEventListener('webkitfullscreenchange', updateFullscreenUI);
 
     // ----------------------------------------------------
     // 6. NETWORKING (TRYSTERO OVER BITTORRENT TRACKERS)
@@ -590,7 +1076,7 @@
 
       room.onPeerJoin(peerId => {
         statusDot.classList.add('connected');
-        connLabel.textContent = 'P2P Online';
+        connLabel.textContent = window.innerWidth <= 600 ? 'Online' : 'P2P Online';
 
         // Add placeholder peer
         peers.set(peerId, {
@@ -677,10 +1163,14 @@
 
       function updatePeerCountUI() {
         const count = peers.size + 1;
-        peerCount.textContent = `${count} ${count === 1 ? 'camper' : 'campers'}`;
+        const isMobile = window.innerWidth <= 600;
+        peerCount.textContent = isMobile ? `${count}` : `${count} ${count === 1 ? 'camper' : 'campers'}`;
         if (peers.size === 0) {
           statusDot.classList.remove('connected');
-          connLabel.textContent = 'In cozy lobby';
+          connLabel.textContent = isMobile ? 'Lobby' : 'In cozy lobby';
+        } else {
+          statusDot.classList.add('connected');
+          connLabel.textContent = isMobile ? 'Online' : 'P2P Online';
         }
       }
 
@@ -694,9 +1184,12 @@
     // ----------------------------------------------------
     const chatInput = document.getElementById('chatInput');
 
+    // Unlock Web Audio on first user interaction anywhere
+    window.addEventListener('pointerdown', () => audio.init(), { once: true });
+
     window.addEventListener('keydown', e => {
       audio.init();
-      if (document.activeElement === chatInput) {
+      if (document.activeElement === chatInput || document.activeElement === mobileChatInput) {
         if (e.key === 'Enter') triggerChatSend();
         return;
       }
@@ -729,21 +1222,188 @@
       if (k === 'd' || e.key === 'ArrowRight') keys.right = false;
     });
 
-    // Mobile Virtual Touch Buttons
-    const bindTouch = (id, k) => {
-      const btn = document.getElementById(id);
-      if (!btn) return;
-      btn.addEventListener('touchstart', e => { e.preventDefault(); audio.init(); keys[k] = true; }, { passive: false });
-      btn.addEventListener('touchend', e => { e.preventDefault(); keys[k] = false; }, { passive: false });
-      btn.addEventListener('touchcancel', () => { keys[k] = false; });
-    };
-    bindTouch('btnUp', 'up');
-    bindTouch('btnDown', 'down');
-    bindTouch('btnLeft', 'left');
-    bindTouch('btnRight', 'right');
+    // ----------------------------------------------------
+    // MOBILE TOUCH & VIRTUAL GAMEPAD SYSTEM
+    // ----------------------------------------------------
+    let tapTarget = null; // { x, y, autoSit, life }
 
-    document.getElementById('btnSit').addEventListener('click', () => { audio.init(); toggleSit(); });
-    document.getElementById('btnFish').addEventListener('click', () => { audio.init(); toggleFishing(); });
+    // Canvas Tap-To-Move (Intuitive touch movement)
+    canvas.addEventListener('pointerdown', e => {
+      if (localPlayer.state === 'sitting') {
+        toggleSit();
+        return;
+      }
+      if (localPlayer.state === 'fishing') {
+        toggleFishing();
+        return;
+      }
+
+      const rect = canvas.getBoundingClientRect();
+      const scaleX = V_WIDTH / rect.width;
+      const scaleY = V_HEIGHT / rect.height;
+      const clickX = (e.clientX - rect.left) * scaleX;
+      const clickY = (e.clientY - rect.top) * scaleY;
+
+      const clampedX = Math.max(16, Math.min(LAKE_SHORE_X - 8, clickX));
+      const clampedY = Math.max(32, Math.min(V_HEIGHT - 16, clickY));
+
+      let targetBench = null;
+      for (const log of LOG_BENCHES) {
+        if (Math.hypot(clampedX - log.sitX, clampedY - log.sitY) < 22) {
+          targetBench = log;
+          break;
+        }
+      }
+
+      if (targetBench) {
+        tapTarget = { x: targetBench.sitX, y: targetBench.sitY, autoSit: true, life: 1.0 };
+      } else {
+        tapTarget = { x: clampedX, y: clampedY, autoSit: false, life: 1.0 };
+      }
+      audio.init();
+    });
+
+    // D-Pad Touch Controls (Tap & Thumb-Slide tracking)
+    const dpad = document.getElementById('dpad');
+    const btnUp = document.getElementById('btnUp');
+    const btnDown = document.getElementById('btnDown');
+    const btnLeft = document.getElementById('btnLeft');
+    const btnRight = document.getElementById('btnRight');
+    let activeDpadPointer = null;
+
+    let lastDpadDir = '';
+    function updateDpadFromCoords(clientX, clientY) {
+      if (!dpad) return;
+      const rect = dpad.getBoundingClientRect();
+      const centerX = rect.left + rect.width / 2;
+      const centerY = rect.top + rect.height / 2;
+      const dx = clientX - centerX;
+      const dy = clientY - centerY;
+      const dist = Math.hypot(dx, dy);
+
+      let currentDir = '';
+      if (dist < 12) {
+        keys.up = keys.down = keys.left = keys.right = false;
+      } else {
+        const angle = Math.atan2(dy, dx);
+        keys.right = angle >= -Math.PI / 4 && angle <= Math.PI / 4;
+        keys.down = angle >= Math.PI / 4 && angle <= (3 * Math.PI) / 4;
+        keys.left = angle >= (3 * Math.PI) / 4 || angle <= (-3 * Math.PI) / 4;
+        keys.up = angle >= (-3 * Math.PI) / 4 && angle <= -Math.PI / 4;
+        tapTarget = null;
+        currentDir = (keys.up ? 'u' : '') + (keys.down ? 'd' : '') + (keys.left ? 'l' : '') + (keys.right ? 'r' : '');
+      }
+
+      if (currentDir && currentDir !== lastDpadDir) {
+        if (navigator.vibrate) navigator.vibrate(8);
+      }
+      lastDpadDir = currentDir;
+
+      btnUp?.classList.toggle('active', keys.up);
+      btnDown?.classList.toggle('active', keys.down);
+      btnLeft?.classList.toggle('active', keys.left);
+      btnRight?.classList.toggle('active', keys.right);
+    }
+
+    function clearDpad() {
+      keys.up = keys.down = keys.left = keys.right = false;
+      lastDpadDir = '';
+      btnUp?.classList.remove('active');
+      btnDown?.classList.remove('active');
+      btnLeft?.classList.remove('active');
+      btnRight?.classList.remove('active');
+      activeDpadPointer = null;
+    }
+
+    if (dpad) {
+      dpad.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        audio.init();
+        activeDpadPointer = e.pointerId;
+        try { dpad.setPointerCapture(e.pointerId); } catch(err){}
+        updateDpadFromCoords(e.clientX, e.clientY);
+      });
+      dpad.addEventListener('pointermove', e => {
+        if (e.pointerId === activeDpadPointer) {
+          e.preventDefault();
+          updateDpadFromCoords(e.clientX, e.clientY);
+        }
+      });
+      dpad.addEventListener('pointerup', e => {
+        if (e.pointerId === activeDpadPointer) clearDpad();
+      });
+      dpad.addEventListener('pointercancel', e => {
+        if (e.pointerId === activeDpadPointer) clearDpad();
+      });
+    }
+
+    // Mobile Action Buttons
+    const btnSit = document.getElementById('btnSit');
+    const btnFish = document.getElementById('btnFish');
+    const sitIcon = document.getElementById('sitIcon');
+    const sitLabel = document.getElementById('sitLabel');
+    const fishIcon = document.getElementById('fishIcon');
+    const fishLabel = document.getElementById('fishLabel');
+
+    if (btnSit) {
+      btnSit.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        audio.init();
+        if (navigator.vibrate) navigator.vibrate(12);
+        btnSit.classList.add('active');
+        setTimeout(() => btnSit.classList.remove('active'), 120);
+        toggleSit();
+      });
+    }
+
+    if (btnFish) {
+      btnFish.addEventListener('pointerdown', e => {
+        e.preventDefault();
+        audio.init();
+        if (navigator.vibrate) navigator.vibrate(12);
+        btnFish.classList.add('active');
+        setTimeout(() => btnFish.classList.remove('active'), 120);
+        toggleFishing();
+      });
+    }
+
+    // Mobile Chat Drawer / Dialog
+    const chatModal = document.getElementById('chatModal');
+    const openChatBtn = document.getElementById('openChatBtn');
+    const mobileChatInput = document.getElementById('mobileChatInput');
+    const mobileChatSend = document.getElementById('mobileChatSend');
+    const mobileChatClose = document.getElementById('mobileChatClose');
+
+    function openMobileChat() {
+      audio.init();
+      if (chatModal) {
+        chatModal.classList.add('open');
+        setTimeout(() => mobileChatInput?.focus(), 150);
+      }
+    }
+
+    function closeMobileChat() {
+      if (chatModal) {
+        chatModal.classList.remove('open');
+        mobileChatInput?.blur();
+      }
+    }
+
+    openChatBtn?.addEventListener('click', openMobileChat);
+    mobileChatClose?.addEventListener('click', closeMobileChat);
+    chatModal?.addEventListener('click', e => {
+      if (e.target === chatModal) closeMobileChat();
+    });
+
+    mobileChatSend?.addEventListener('click', () => {
+      triggerChatSend();
+    });
+
+    mobileChatInput?.addEventListener('keydown', e => {
+      if (e.key === 'Enter') {
+        triggerChatSend();
+      }
+    });
 
     function toggleSit() {
       if (localPlayer.state === 'fishing') return;
@@ -763,6 +1423,7 @@
           localPlayer.dir = log.faceDir;
           localPlayer.state = 'sitting';
           localPlayer.isMoving = false;
+          tapTarget = null;
           if (sendAction) sendAction({ type: 'sit', x: log.sitX, y: log.sitY, dir: log.faceDir });
           audio.playTextBlip();
           break;
@@ -776,7 +1437,6 @@
       // Reel in action when bite is ready
       if (localPlayer.state === 'fishing') {
         if (localPlayer.fishBite) {
-          // Success catch!
           const item = FISH_SPECIES[Math.floor(Math.random() * FISH_SPECIES.length)];
           localPlayer.fishCatchNotice = `${item.icon} Caught ${item.name}!`;
           localPlayer.fishNoticeTimer = 3.0;
@@ -785,7 +1445,6 @@
           audio.playCatchPing();
           if (sendAction) sendAction({ type: 'fish', fishing: false, catch: localPlayer.fishCatchNotice });
         } else {
-          // Canceled fishing
           localPlayer.state = 'idle';
           localPlayer.fishBite = false;
           if (sendAction) sendAction({ type: 'fish', fishing: false });
@@ -800,6 +1459,7 @@
         localPlayer.isMoving = false;
         localPlayer.fishTimer = Math.random() * 4 + 3; // 3 to 7 sec wait
         localPlayer.fishBite = false;
+        tapTarget = null;
         audio.playSplash();
         if (sendAction) sendAction({ type: 'fish', fishing: true, bite: false });
       }
@@ -807,7 +1467,10 @@
 
     function triggerChatSend(customEmoji) {
       audio.init();
-      const text = (customEmoji || chatInput.value).trim();
+      const inputVal = (document.activeElement === mobileChatInput || (mobileChatInput && mobileChatInput.value.trim()))
+        ? mobileChatInput.value
+        : (chatInput ? chatInput.value : '');
+      const text = (customEmoji || inputVal).trim();
       if (!text) return;
 
       localPlayer.bubble = text;
@@ -817,14 +1480,23 @@
       if (sendChat) sendChat({ text });
 
       if (!customEmoji) {
-        chatInput.value = '';
-        chatInput.blur();
+        if (chatInput) {
+          chatInput.value = '';
+          chatInput.blur();
+        }
+        if (mobileChatInput) {
+          mobileChatInput.value = '';
+          closeMobileChat();
+        }
       }
     }
 
-    // Emoji Bar
+    // Emoji Bars (Desktop & Mobile)
     document.querySelectorAll('.emoji-btn').forEach(btn => {
-      btn.addEventListener('click', () => triggerChatSend(btn.dataset.emoji));
+      btn.addEventListener('click', () => {
+        if (navigator.vibrate) navigator.vibrate(10);
+        triggerChatSend(btn.dataset.emoji);
+      });
     });
 
     // Audio Mute Toggle
@@ -889,7 +1561,7 @@
         if (r.life <= 0) waterRipples.splice(i, 1);
       }
 
-      // 3. Local Player Movement & Logic
+      // 3. Local Player Movement & Logic (Keys & Tap-to-Move)
       if (localPlayer.state === 'idle') {
         let dx = 0;
         let dy = 0;
@@ -899,6 +1571,7 @@
         if (keys.right) dx += 1;
 
         if (dx !== 0 || dy !== 0) {
+          tapTarget = null;
           const len = Math.hypot(dx, dy);
           dx /= len;
           dy /= len;
@@ -907,18 +1580,15 @@
           const nextX = localPlayer.x + dx * speed * dt;
           const nextY = localPlayer.y + dy * speed * dt;
 
-          // Facing direction
           if (Math.abs(dx) > Math.abs(dy)) {
             localPlayer.dir = dx > 0 ? 'right' : 'left';
           } else {
             localPlayer.dir = dy > 0 ? 'down' : 'up';
           }
 
-          // Arena and Water boundary collisions
           if (nextX >= 16 && nextX <= LAKE_SHORE_X - 8) localPlayer.x = nextX;
           if (nextY >= 32 && nextY <= V_HEIGHT - 16) localPlayer.y = nextY;
 
-          // Campfire box collision
           if (Math.hypot(localPlayer.x - FIRE_X, localPlayer.y - FIRE_Y) < 14) {
             localPlayer.x -= dx * speed * dt;
             localPlayer.y -= dy * speed * dt;
@@ -927,6 +1597,44 @@
           localPlayer.isMoving = true;
           localPlayer.animTimer += dt * 8;
           localPlayer.animFrame = Math.floor(localPlayer.animTimer) % 4;
+        } else if (tapTarget) {
+          const toX = tapTarget.x - localPlayer.x;
+          const toY = tapTarget.y - localPlayer.y;
+          const dist = Math.hypot(toX, toY);
+
+          if (dist > 3) {
+            dx = toX / dist;
+            dy = toY / dist;
+            const speed = 55;
+            const nextX = localPlayer.x + dx * speed * dt;
+            const nextY = localPlayer.y + dy * speed * dt;
+
+            if (Math.abs(dx) > Math.abs(dy)) {
+              localPlayer.dir = dx > 0 ? 'right' : 'left';
+            } else {
+              localPlayer.dir = dy > 0 ? 'down' : 'up';
+            }
+
+            if (nextX >= 16 && nextX <= LAKE_SHORE_X - 8) localPlayer.x = nextX;
+            if (nextY >= 32 && nextY <= V_HEIGHT - 16) localPlayer.y = nextY;
+
+            if (Math.hypot(localPlayer.x - FIRE_X, localPlayer.y - FIRE_Y) < 14) {
+              localPlayer.x -= dx * speed * dt;
+              localPlayer.y -= dy * speed * dt;
+              tapTarget = null;
+            }
+
+            localPlayer.isMoving = true;
+            localPlayer.animTimer += dt * 8;
+            localPlayer.animFrame = Math.floor(localPlayer.animTimer) % 4;
+          } else {
+            localPlayer.isMoving = false;
+            localPlayer.animFrame = 0;
+            if (tapTarget.autoSit) {
+              toggleSit();
+            }
+            tapTarget = null;
+          }
         } else {
           localPlayer.isMoving = false;
           localPlayer.animFrame = 0;
@@ -934,6 +1642,12 @@
       } else {
         localPlayer.isMoving = false;
         localPlayer.animFrame = 0;
+        tapTarget = null;
+      }
+
+      // Tap Target decay
+      if (tapTarget && tapTarget.life > 0) {
+        tapTarget.life -= dt * 1.5;
       }
 
       // 4. Fishing countdown & exclamation bite trigger
@@ -942,11 +1656,58 @@
         if (localPlayer.fishTimer <= 0) {
           localPlayer.fishBite = true;
           audio.playSplash();
+          if (navigator.vibrate) navigator.vibrate([60, 40, 60]);
           if (sendAction) sendAction({ type: 'fish', fishing: true, bite: true });
         }
       }
 
-      // 5. Speech Bubble and Notice timers
+      // 5. Contextual Action Button Updates
+      if (btnSit && sitIcon && sitLabel) {
+        if (localPlayer.state === 'sitting') {
+          sitIcon.textContent = '🚶';
+          sitLabel.textContent = 'Stand';
+          btnSit.classList.add('sitting');
+          btnSit.classList.remove('can-interact');
+        } else {
+          sitIcon.textContent = '🪑';
+          sitLabel.textContent = 'Sit';
+          btnSit.classList.remove('sitting');
+          let nearBench = false;
+          if (localPlayer.state === 'idle') {
+            for (const log of LOG_BENCHES) {
+              if (Math.hypot(localPlayer.x - log.sitX, localPlayer.y - log.sitY) < 26) {
+                nearBench = true;
+                break;
+              }
+            }
+          }
+          btnSit.classList.toggle('can-interact', nearBench);
+        }
+      }
+
+      if (btnFish && fishIcon && fishLabel) {
+        if (localPlayer.state === 'fishing') {
+          if (localPlayer.fishBite) {
+            fishIcon.textContent = '❗';
+            fishLabel.textContent = 'Reel!';
+            btnFish.classList.add('bite-alert');
+            btnFish.classList.remove('can-interact');
+          } else {
+            fishIcon.textContent = '⏳';
+            fishLabel.textContent = 'Wait';
+            btnFish.classList.remove('bite-alert');
+            btnFish.classList.remove('can-interact');
+          }
+        } else {
+          fishIcon.textContent = '🎣';
+          fishLabel.textContent = 'Fish';
+          btnFish.classList.remove('bite-alert');
+          const nearLake = localPlayer.state === 'idle' && (localPlayer.x >= LAKE_SHORE_X - 25);
+          btnFish.classList.toggle('can-interact', nearLake);
+        }
+      }
+
+      // 6. Speech Bubble and Notice timers
       if (localPlayer.bubbleTimer > 0) {
         localPlayer.bubbleTimer -= dt;
         if (localPlayer.bubbleTimer <= 0) localPlayer.bubble = null;
@@ -956,7 +1717,7 @@
         if (localPlayer.fishNoticeTimer <= 0) localPlayer.fishCatchNotice = null;
       }
 
-      // 6. Peers entity interpolation (Lerp)
+      // 7. Peers entity interpolation (Lerp)
       for (const peer of peers.values()) {
         peer.x += (peer.targetX - peer.x) * 0.2;
         peer.y += (peer.targetY - peer.y) * 0.2;
@@ -978,7 +1739,7 @@
         }
       }
 
-      // 7. Network sync throttled to 20Hz
+      // 8. Network sync throttled to 20Hz
       networkTimer += dt * 1000;
       if (networkTimer >= NET_INTERVAL) {
         networkTimer = 0;
@@ -1056,6 +1817,20 @@
 
       for (const entity of renderQueue) {
         drawChibiAvatar(entity);
+      }
+
+      // Tap to move indicator pulse
+      if (tapTarget && tapTarget.life > 0) {
+        const pulse = (1 - tapTarget.life) * 8;
+        ctx.save();
+        ctx.strokeStyle = `rgba(255, 208, 67, ${Math.max(0, tapTarget.life)})`;
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.arc(tapTarget.x, tapTarget.y, 4 + pulse, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.fillStyle = `rgba(255, 208, 67, ${Math.max(0, tapTarget.life * 0.8)})`;
+        ctx.fillRect(tapTarget.x - 1, tapTarget.y - 1, 2, 2);
+        ctx.restore();
       }
 
       // --- LAYER 7: NIGHT AMBIENCE VIGNETTE & WARM FIRE LIGHT OVERLAY ---
