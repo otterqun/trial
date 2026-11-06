@@ -1050,6 +1050,15 @@
             <div class="char-card-name">Scout Man</div>
             <div class="char-card-desc">Peneroka Rimba</div>
           </div>
+
+          <div class="char-card" data-char="undead_cat">
+            <div class="char-card-badge">🧟 Undead</div>
+            <div class="char-preview-box">
+              <img src="asset/character/undead_cat_idle.png" alt="Undead Cat" class="char-preview-img" onerror="this.onerror=null;this.src='asset/character/undead_cat_idle.png'" />
+            </div>
+            <div class="char-card-name">Undead Cat</div>
+            <div class="char-card-desc">Robot Zombi Cyber</div>
+          </div>
         </div>
 
         <div class="char-modal-footer">
@@ -1218,6 +1227,36 @@
           { sx: 760, sy: 869, sw: 92, sh: 167 }
         ],
         theme: { shirt: '#58a4b0', hair: '#4a3224', skin: '#fcd3b2' }
+      },
+      undead_cat: {
+        id: 'undead_cat',
+        name: 'Undead Cat',
+        badge: '🧟 Undead',
+        w: 22,
+        h: 30,
+        defaultFacing: 'left', // Row 1 frames naturally face left
+        src: 'asset/character/undead_cat_clear.png',
+        fallbackSrc: 'asset/character/undead_cat_clear.png',
+        idle: { sx: 461, sy: 31, sw: 102, sh: 172 },
+        walkSide: [
+          { sx: 260, sy: 228, sw: 79, sh: 178 },
+          { sx: 401, sy: 227, sw: 83, sh: 180 },
+          { sx: 540, sy: 228, sw: 81, sh: 178 },
+          { sx: 676, sy: 227, sw: 85, sh: 178 }
+        ],
+        walkUp: [
+          { sx: 261, sy: 627, sw: 85, sh: 172 },
+          { sx: 399, sy: 627, sw: 88, sh: 172 },
+          { sx: 538, sy: 627, sw: 83, sh: 175 },
+          { sx: 679, sy: 627, sw: 84, sh: 165 }
+        ],
+        walkDown: [
+          { sx: 256, sy: 825, sw: 97, sh: 171 },
+          { sx: 402, sy: 824, sw: 89, sh: 173 },
+          { sx: 535, sy: 824, sw: 86, sh: 173 },
+          { sx: 671, sy: 824, sw: 92, sh: 175 }
+        ],
+        theme: { shirt: '#328b8b', hair: '#1b4d4d', skin: '#49b5a8' }
       }
     };
     const charImages = {};
