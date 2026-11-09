@@ -1191,7 +1191,8 @@
 
   <!-- Modern ES Module Native Client-Side Engine -->
   <script type="module">
-    import { joinRoom, selfId } from 'https://esm.sh/trystero@0.20.0/nostr';
+    import { joinRoom, selfId } from 'https://esm.sh/trystero@0.20.0/mqtt';
+    import mqtt from 'https://esm.sh/mqtt@5.10.1';
 
     // ----------------------------------------------------
     // 1. CONFIGURATION & CONSTANTS
@@ -1202,30 +1203,35 @@
     const NET_INTERVAL = 1000 / NET_SYNC_HZ;
     const LERP_SPEED = 14; // Frame-rate independent lerp factor
 
-    // Robust Signaling (Nostr Relays + WebTorrent Tracker Fallbacks) & STUN NAT Traversal
+    // High-availability WSS MQTT Brokers (Never blocked by torrent/nostr filters)
+    const WSS_BROKERS = [
+      'wss://broker.emqx.io:8084/mqtt',
+      'wss://broker.hivemq.com:8884/mqtt',
+      'wss://test.mosquitto.org:8081/mqtt'
+    ];
+
+    // Robust Signaling + STUN + Free Public TURN Servers for 4G/5G/Symmetric NAT Traversal
     const P2P_CONFIG = {
       appId: APP_ID,
-      relayUrls: [
-        'wss://relay.damus.io',
-        'wss://nos.lol',
-        'wss://relay.primal.net',
-        'wss://offchain.pub',
-        'wss://nostr.mom'
-      ],
-      trackerUrls: [
-        'wss://tracker.openwebtorrent.com',
-        'wss://tracker.webtorrent.dev',
-        'wss://tracker.files.fm:7073/announce',
-        'wss://tracker.btorrent.xyz'
-      ],
+      relayUrls: WSS_BROKERS,
       rtcConfig: {
+        iceCandidatePoolSize: 10,
         iceServers: [
           { urls: 'stun:stun.l.google.com:19302' },
           { urls: 'stun:stun1.l.google.com:19302' },
           { urls: 'stun:stun2.l.google.com:19302' },
           { urls: 'stun:stun3.l.google.com:19302' },
           { urls: 'stun:stun4.l.google.com:19302' },
-          { urls: 'stun:stun.cloudflare.com:3478' }
+          { urls: 'stun:stun.cloudflare.com:3478' },
+          {
+            urls: [
+              'turn:openrelay.metered.ca:80',
+              'turn:openrelay.metered.ca:443',
+              'turn:openrelay.metered.ca:443?transport=tcp'
+            ],
+            username: 'openrelayproject',
+            credential: 'openrelayproject'
+          }
         ]
       }
     };
@@ -1768,6 +1774,7 @@
 
     let roomId = parseSanitizedRoomId();
     let room = null;
+    let mqttClients = [];
     let sendMove = null;
     let sendHandshake = null;
     let sendChat = null;
@@ -1824,7 +1831,7 @@
       peer.lastSeen = performance.now();
     }
 
-    function ensurePeerEntity(peerId) {
+    function ensurePeerEntity(peerId, transport = 'WSS') {
       let peer = peers.get(peerId);
       if (!peer) {
         peer = {
@@ -1839,6 +1846,7 @@
           targetY: 110,
           hasSyncedPosition: false,
           handshakeComplete: false,
+          transport,
           dir: 'down',
           isMoving: false,
           state: 'idle',
@@ -1854,6 +1862,10 @@
           retryTimer: null
         };
         peers.set(peerId, peer);
+        updatePeerCountUI();
+      } else {
+        if (transport === 'WebRTC') peer.transport = 'WebRTC';
+        peer.lastSeen = performance.now();
       }
       return peer;
     }
@@ -1892,10 +1904,10 @@
       if (diagRtcStatus) {
         const displayStatus = rtcConnectionState === 'Disconnected'
           ? 'Disconnected'
-          : (remoteCount > 0 ? 'Connected' : 'Connecting (Signaling)');
+          : (remoteCount > 0 ? 'Connected (P2P/WSS)' : 'Ready (Waiting Peers)');
         diagRtcStatus.textContent = displayStatus;
         diagRtcStatus.className = 'p2p-diag-val ' + (
-          displayStatus === 'Connected' ? 'ok' : (displayStatus === 'Disconnected' ? 'err' : 'warn')
+          remoteCount > 0 ? 'ok' : (displayStatus === 'Disconnected' ? 'err' : 'warn')
         );
       }
 
@@ -1913,7 +1925,7 @@
         const posStr = `${Math.round(p.x)},${Math.round(p.y)}`;
         peerRows.push(
           `<div class="p2p-peer-item">` +
-            `<span class="p2p-peer-id" title="${pid}">${shortId} (${p.name || 'Camper'})</span>` +
+            `<span class="p2p-peer-id" title="${pid} (${p.transport || 'WSS'})">${shortId} (${p.name || 'Camper'})</span>` +
             `<span>[${posStr}] <span class="p2p-peer-ping">${pingStr}</span></span>` +
           `</div>`
         );
@@ -1947,6 +1959,22 @@
       }
       peers.clear();
 
+      // Cleanly close MQTT-over-WSS fallback clients
+      if (mqttClients.length > 0) {
+        for (const client of mqttClients) {
+          try {
+            if (client.connected) {
+              client.publish(
+                `${APP_ID}/${roomId}/pkt`,
+                JSON.stringify({ s: selfId, t: null, k: 'leave', d: {} })
+              );
+            }
+            client.end(true);
+          } catch (e) {}
+        }
+        mqttClients = [];
+      }
+
       if (room) {
         try {
           console.info(`[P2P:LEAVE] Leaving previous room instance...`);
@@ -1979,184 +2007,342 @@
 
       console.info(`[P2P:INIT] Joining room "#${roomId}" (appId: "${APP_ID}", selfId: "${selfId}")`, P2P_CONFIG);
 
+      // Shared incoming packet handlers (used by both WebRTC P2P and Direct WSS Relay Fallback)
+      const handlePeerJoin = (peerId, transport = 'WebRTC') => {
+        if (!peerId || peerId === selfId) return;
+        const isNew = !peers.has(peerId);
+        const peer = ensurePeerEntity(peerId, transport);
+        rtcConnectionState = 'Connected';
+
+        if (isNew) {
+          console.info(`[P2P:JOIN] Peer connected (${transport}): ${peerId} in room #${roomId}`);
+          updatePeerCountUI();
+        }
+
+        // Step 1 of Handshake: Immediately send SYN with our full local state targeted to peerId
+        const synPayload = {
+          type: 'SYN',
+          state: buildLocalPlayerSnapshot()
+        };
+        console.info(`[P2P:STATE] Sending SYN handshake to ${peerId}`, synPayload.state);
+        if (sendHandshake) sendHandshake(synPayload, peerId);
+        if (sendMove) sendMove(synPayload.state, peerId);
+
+        if (peer.retryTimer) clearTimeout(peer.retryTimer);
+        peer.retryTimer = setTimeout(() => {
+          const activePeer = peers.get(peerId);
+          if (activePeer && !activePeer.handshakeComplete && sendHandshake) {
+            const retryPayload = {
+              type: 'SYN',
+              state: buildLocalPlayerSnapshot()
+            };
+            console.info(`[P2P:STATE] Retrying SYN handshake to ${peerId}`);
+            sendHandshake(retryPayload, peerId);
+          }
+        }, 900);
+
+        if (sendPing) {
+          sendPing({ t: performance.now() }, peerId);
+        }
+      };
+
+      const handlePeerLeave = (peerId) => {
+        if (!peerId || !peers.has(peerId)) return;
+        console.info(`[P2P:LEAVE] Peer disconnected: ${peerId} from room #${roomId}`);
+        const peer = peers.get(peerId);
+        if (peer && peer.retryTimer) {
+          clearTimeout(peer.retryTimer);
+        }
+        peers.delete(peerId);
+        rtcConnectionState = peers.size > 0 ? 'Connected' : 'Connecting';
+        updatePeerCountUI();
+      };
+
+      const handleHandshake = (payload, peerId, transport = 'WebRTC') => {
+        if (!payload || !payload.state || !peerId || peerId === selfId) return;
+        const isNew = !peers.has(peerId);
+        const peer = ensurePeerEntity(peerId, transport);
+        const isFirstSync = !peer.hasSyncedPosition;
+
+        applyRemotePeerState(peer, payload.state, isFirstSync);
+        peer.handshakeComplete = true;
+        rtcConnectionState = 'Connected';
+        if (peer.retryTimer) {
+          clearTimeout(peer.retryTimer);
+          peer.retryTimer = null;
+        }
+
+        if (isNew) {
+          console.info(`[P2P:JOIN] Peer discovered via ${payload.type || 'SYNC'} (${transport}): ${peerId}`);
+        }
+        console.info(`[P2P:STATE] Received ${payload.type || 'SYNC'} from ${peerId}:`, payload.state);
+
+        // Step 2 of Handshake: If we received a SYN, acknowledge immediately with our own current state (ACK)
+        if (payload.type === 'SYN' && sendHandshake) {
+          const ackPayload = {
+            type: 'ACK',
+            state: buildLocalPlayerSnapshot()
+          };
+          console.info(`[P2P:STATE] Sending ACK handshake to ${peerId}`, ackPayload.state);
+          sendHandshake(ackPayload, peerId);
+        }
+
+        updatePeerCountUI();
+      };
+
+      const handleMove = (data, peerId, transport = 'WebRTC') => {
+        if (!data || !peerId || peerId === selfId) return;
+        const isNew = !peers.has(peerId);
+        const peer = ensurePeerEntity(peerId, transport);
+        const isFirstSync = !peer.hasSyncedPosition;
+        applyRemotePeerState(peer, data, isFirstSync);
+        rtcConnectionState = 'Connected';
+        if (isNew || isFirstSync) {
+          console.info(`[P2P:STATE] Initial position synced via move from ${peerId}: (${data.x}, ${data.y})`);
+          // Ensure two-way visibility if peer wasn't handshake-synced yet
+          if (isNew && sendHandshake) {
+            sendHandshake({ type: 'SYN', state: buildLocalPlayerSnapshot() }, peerId);
+          }
+          updatePeerCountUI();
+        }
+      };
+
+      const handleChat = (data, peerId, transport = 'WebRTC') => {
+        if (!data || !peerId || peerId === selfId) return;
+        const p = ensurePeerEntity(peerId, transport);
+        if (p.lastChatTs && data.ts && p.lastChatTs === data.ts) return; // Deduplicate hybrid packet
+        p.lastChatTs = data.ts || Date.now();
+        p.bubble = data.text;
+        p.bubbleTimer = 4.0;
+        console.info(`[P2P:STATE] Chat from ${peerId}: "${data.text}"`);
+        audio.playTextBlip();
+      };
+
+      const handleAction = (data, peerId, transport = 'WebRTC') => {
+        if (!data || !peerId || peerId === selfId) return;
+        const p = ensurePeerEntity(peerId, transport);
+        console.info(`[P2P:STATE] Action from ${peerId}:`, data);
+        if (data.type === 'sit') {
+          p.state = 'sitting';
+          p.targetX = data.x;
+          p.targetY = data.y;
+          p.dir = data.dir;
+        } else if (data.type === 'stand') {
+          p.state = 'idle';
+        } else if (data.type === 'fish') {
+          p.state = data.fishing ? 'fishing' : 'idle';
+          p.fishBite = data.bite || false;
+          if (data.catch) {
+            p.fishCatchNotice = data.catch;
+            p.fishNoticeTimer = 2.5;
+          }
+        }
+      };
+
+      const handlePing = (data, peerId) => {
+        if (!data || typeof data.t !== 'number' || !peerId || peerId === selfId) return;
+        if (sendPong) sendPong({ t: data.t }, peerId);
+      };
+
+      const handlePong = (data, peerId) => {
+        if (!data || typeof data.t !== 'number' || !peerId || peerId === selfId) return;
+        const rtt = Math.max(1, Math.round(performance.now() - data.t));
+        const peer = peers.get(peerId);
+        if (peer) {
+          peer.rtt = rtt;
+          peer.lastSeen = performance.now();
+        }
+        updateDiagnosticsHUD();
+      };
+
+      // --- LAYER A: Direct MQTT-over-WSS Fallback Mesh (100% 4G/5G/Symmetric-NAT Proof) ---
+      const roomTopic = `${APP_ID}/${roomId}/pkt`;
+      const publishWssPacket = (kind, data, targetPeerId = null) => {
+        const payloadStr = JSON.stringify({
+          s: selfId,
+          t: targetPeerId || null,
+          k: kind,
+          d: data
+        });
+        for (const client of mqttClients) {
+          if (client && client.connected) {
+            try {
+              client.publish(roomTopic, payloadStr);
+            } catch (e) {}
+          }
+        }
+      };
+
+      // Connect to primary & backup WSS brokers for instant cross-network discovery
+      WSS_BROKERS.slice(0, 2).forEach((brokerUrl) => {
+        try {
+          const client = mqtt.connect(brokerUrl, {
+            keepalive: 30,
+            reconnectPeriod: 3000,
+            connectTimeout: 8000
+          });
+
+          client.on('connect', () => {
+            client.subscribe(roomTopic, { qos: 0 }, (err) => {
+              if (!err) {
+                console.info(`[P2P:INIT] Connected to WSS Relay (${brokerUrl}) -> subscribed to ${roomTopic}`);
+                // Broadcast immediate SYN presence so existing peers in the room see us within <300ms
+                publishWssPacket('hs', {
+                  type: 'SYN',
+                  state: buildLocalPlayerSnapshot()
+                });
+              }
+            });
+          });
+
+          client.on('message', (topic, messageBuffer) => {
+            if (topic !== roomTopic) return;
+            try {
+              const pkt = JSON.parse(messageBuffer.toString());
+              if (!pkt || !pkt.s || pkt.s === selfId) return;
+              if (pkt.t && pkt.t !== selfId) return; // Targeted to a different peer
+
+              const senderId = pkt.s;
+              switch (pkt.k) {
+                case 'hs':
+                  handleHandshake(pkt.d, senderId, 'WSS');
+                  break;
+                case 'move':
+                  handleMove(pkt.d, senderId, 'WSS');
+                  break;
+                case 'chat':
+                  handleChat(pkt.d, senderId, 'WSS');
+                  break;
+                case 'action':
+                  handleAction(pkt.d, senderId, 'WSS');
+                  break;
+                case 'ping':
+                  handlePing(pkt.d, senderId);
+                  break;
+                case 'pong':
+                  handlePong(pkt.d, senderId);
+                  break;
+                case 'leave':
+                  handlePeerLeave(senderId);
+                  break;
+              }
+            } catch (err) {}
+          });
+
+          mqttClients.push(client);
+        } catch (err) {
+          console.warn('[P2P:ERROR] WSS fallback broker init error:', err);
+        }
+      });
+
+      // --- LAYER B: Trystero WebRTC P2P Data Channels (with STUN + TURN) ---
+      let rtcSendMove = null;
+      let rtcSendHandshake = null;
+      let rtcSendChat = null;
+      let rtcSendAction = null;
+      let rtcSendPing = null;
+      let rtcSendPong = null;
+
       try {
         room = joinRoom(P2P_CONFIG, roomId);
 
         const moveActions = room.makeAction('move');
-        sendMove = moveActions[0];
+        rtcSendMove = moveActions[0];
         const getMove = moveActions[1];
 
         const hsActions = room.makeAction('hs');
-        sendHandshake = hsActions[0];
+        rtcSendHandshake = hsActions[0];
         const getHandshake = hsActions[1];
 
         const chatActions = room.makeAction('chat');
-        sendChat = chatActions[0];
+        rtcSendChat = chatActions[0];
         const getChat = chatActions[1];
 
         const customActions = room.makeAction('action');
-        sendAction = customActions[0];
+        rtcSendAction = customActions[0];
         const getAction = customActions[1];
 
         const pingActions = room.makeAction('ping');
-        sendPing = pingActions[0];
+        rtcSendPing = pingActions[0];
         const getPing = pingActions[1];
 
         const pongActions = room.makeAction('pong');
-        sendPong = pongActions[0];
+        rtcSendPong = pongActions[0];
         const getPong = pongActions[1];
 
-        // 3. Late-Joiner Synchronization (Full Two-Way Handshake Lifecycle)
-        room.onPeerJoin(peerId => {
-          rtcConnectionState = 'Connected';
-          console.info(`[P2P:JOIN] Peer connected: ${peerId} in room #${roomId}`);
+        room.onPeerJoin(peerId => handlePeerJoin(peerId, 'WebRTC'));
+        room.onPeerLeave(peerId => handlePeerLeave(peerId));
 
-          const peer = ensurePeerEntity(peerId);
-          updatePeerCountUI();
-
-          // Step 1 of Handshake: Immediately send SYN with our full local state targeted to peerId
-          const synPayload = {
-            type: 'SYN',
-            state: buildLocalPlayerSnapshot()
-          };
-          console.info(`[P2P:STATE] Sending SYN handshake to ${peerId}`, synPayload.state);
-          sendHandshake(synPayload, peerId);
-          sendMove(synPayload.state, peerId);
-
-          // Safety retry in case the newcomer's data channel listener was still binding
-          if (peer.retryTimer) clearTimeout(peer.retryTimer);
-          peer.retryTimer = setTimeout(() => {
-            const activePeer = peers.get(peerId);
-            if (activePeer && !activePeer.handshakeComplete && sendHandshake) {
-              const retryPayload = {
-                type: 'SYN',
-                state: buildLocalPlayerSnapshot()
-              };
-              console.info(`[P2P:STATE] Retrying SYN handshake to ${peerId}`);
-              sendHandshake(retryPayload, peerId);
-            }
-          }, 900);
-
-          // Trigger an immediate ping measurement
-          if (sendPing) {
-            sendPing({ t: performance.now() }, peerId);
-          }
-        });
-
-        room.onPeerLeave(peerId => {
-          console.info(`[P2P:LEAVE] Peer disconnected: ${peerId} from room #${roomId}`);
-          const peer = peers.get(peerId);
-          if (peer && peer.retryTimer) {
-            clearTimeout(peer.retryTimer);
-          }
-          peers.delete(peerId);
-          rtcConnectionState = peers.size > 0 ? 'Connected' : 'Connecting';
-          updatePeerCountUI();
-        });
-
-        // Two-way Handshake Receiver (SYN -> ACK)
-        getHandshake((payload, peerId) => {
-          if (!payload || !payload.state) return;
-          const peer = ensurePeerEntity(peerId);
-          const isFirstSync = !peer.hasSyncedPosition;
-
-          applyRemotePeerState(peer, payload.state, isFirstSync);
-          peer.handshakeComplete = true;
-          if (peer.retryTimer) {
-            clearTimeout(peer.retryTimer);
-            peer.retryTimer = null;
-          }
-
-          console.info(`[P2P:STATE] Received ${payload.type || 'SYNC'} from ${peerId}:`, payload.state);
-
-          // Step 2 of Handshake: If we received a SYN, acknowledge immediately with our own current state (ACK)
-          if (payload.type === 'SYN' && sendHandshake) {
-            const ackPayload = {
-              type: 'ACK',
-              state: buildLocalPlayerSnapshot()
-            };
-            console.info(`[P2P:STATE] Sending ACK handshake to ${peerId}`, ackPayload.state);
-            sendHandshake(ackPayload, peerId);
-          }
-
-          updateDiagnosticsHUD();
-        });
-
-        // High-frequency Movement & State Updates
-        getMove((data, peerId) => {
-          if (!data) return;
-          const peer = ensurePeerEntity(peerId);
-          const isFirstSync = !peer.hasSyncedPosition;
-          applyRemotePeerState(peer, data, isFirstSync);
-          if (isFirstSync) {
-            console.info(`[P2P:STATE] Initial position synced via move from ${peerId}: (${data.x}, ${data.y})`);
-            updateDiagnosticsHUD();
-          }
-        });
-
-        getChat((data, peerId) => {
-          if (!data) return;
-          const p = ensurePeerEntity(peerId);
-          p.bubble = data.text;
-          p.bubbleTimer = 4.0;
-          console.info(`[P2P:STATE] Chat from ${peerId}: "${data.text}"`);
-          audio.playTextBlip();
-        });
-
-        getAction((data, peerId) => {
-          if (!data) return;
-          const p = ensurePeerEntity(peerId);
-          console.info(`[P2P:STATE] Action from ${peerId}:`, data);
-          if (data.type === 'sit') {
-            p.state = 'sitting';
-            p.targetX = data.x;
-            p.targetY = data.y;
-            p.dir = data.dir;
-          } else if (data.type === 'stand') {
-            p.state = 'idle';
-          } else if (data.type === 'fish') {
-            p.state = data.fishing ? 'fishing' : 'idle';
-            p.fishBite = data.bite || false;
-            if (data.catch) {
-              p.fishCatchNotice = data.catch;
-              p.fishNoticeTimer = 2.5;
-            }
-          }
-        });
-
-        // Per-Peer Round-Trip Latency (Ping / Pong)
-        getPing((data, peerId) => {
-          if (sendPong && data && typeof data.t === 'number') {
-            sendPong({ t: data.t }, peerId);
-          }
-        });
-
-        getPong((data, peerId) => {
-          if (!data || typeof data.t !== 'number') return;
-          const rtt = Math.max(1, Math.round(performance.now() - data.t));
-          const peer = peers.get(peerId);
-          if (peer) {
-            peer.rtt = rtt;
-            peer.lastSeen = performance.now();
-          }
-          updateDiagnosticsHUD();
-        });
-
-        // Periodic Ping Heartbeat (every 2.5s)
-        pingIntervalId = setInterval(() => {
-          if (!sendPing || peers.size === 0) return;
-          const nowPerf = performance.now();
-          for (const peerId of peers.keys()) {
-            sendPing({ t: nowPerf }, peerId);
-          }
-        }, 2500);
+        getHandshake((payload, peerId) => handleHandshake(payload, peerId, 'WebRTC'));
+        getMove((data, peerId) => handleMove(data, peerId, 'WebRTC'));
+        getChat((data, peerId) => handleChat(data, peerId, 'WebRTC'));
+        getAction((data, peerId) => handleAction(data, peerId, 'WebRTC'));
+        getPing((data, peerId) => handlePing(data, peerId));
+        getPong((data, peerId) => handlePong(data, peerId));
 
       } catch (e) {
-        rtcConnectionState = 'Disconnected';
-        console.error('[P2P:ERROR] Trystero connection error:', e);
-        updatePeerCountUI();
+        console.error('[P2P:ERROR] Trystero WebRTC init error (WSS Relay still active):', e);
       }
+
+      // Unified Hybrid Senders (transmits over both WebRTC P2P and WSS Relay Fallback)
+      sendMove = (data, targetPeerId) => {
+        try { if (rtcSendMove) rtcSendMove(data, targetPeerId); } catch (e) {}
+        publishWssPacket('move', data, targetPeerId);
+      };
+
+      sendHandshake = (data, targetPeerId) => {
+        try { if (rtcSendHandshake) rtcSendHandshake(data, targetPeerId); } catch (e) {}
+        publishWssPacket('hs', data, targetPeerId);
+      };
+
+      sendChat = (data, targetPeerId) => {
+        const payload = { ...data, ts: Date.now() };
+        try { if (rtcSendChat) rtcSendChat(payload, targetPeerId); } catch (e) {}
+        publishWssPacket('chat', payload, targetPeerId);
+      };
+
+      sendAction = (data, targetPeerId) => {
+        try { if (rtcSendAction) rtcSendAction(data, targetPeerId); } catch (e) {}
+        publishWssPacket('action', data, targetPeerId);
+      };
+
+      sendPing = (data, targetPeerId) => {
+        try { if (rtcSendPing) rtcSendPing(data, targetPeerId); } catch (e) {}
+        publishWssPacket('ping', data, targetPeerId);
+      };
+
+      sendPong = (data, targetPeerId) => {
+        try { if (rtcSendPong) rtcSendPong(data, targetPeerId); } catch (e) {}
+        publishWssPacket('pong', data, targetPeerId);
+      };
+
+      // Periodic Ping, Presence Discovery Beacon & Stale Peer Cleanup (every 2.5s)
+      pingIntervalId = setInterval(() => {
+        const nowPerf = performance.now();
+
+        // Broadcast lightweight presence & state so any late-joining or mobile peer discovers us
+        publishWssPacket('move', buildLocalPlayerSnapshot());
+
+        if (peers.size > 0) {
+          for (const [peerId, peer] of peers.entries()) {
+            // Remove ghost peers that closed tab without firing unload (silent for >10s)
+            if (nowPerf - (peer.lastSeen || nowPerf) > 10000) {
+              console.info(`[P2P:LEAVE] Peer timed out (inactive >10s): ${peerId}`);
+              handlePeerLeave(peerId);
+              continue;
+            }
+            if (sendPing) {
+              sendPing({ t: nowPerf }, peerId);
+            }
+          }
+        }
+      }, 2500);
     }
+
+    // Notify room peers cleanly when closing tab/refreshing
+    window.addEventListener('beforeunload', () => {
+      cleanupCurrentRoom();
+    });
 
     // Initialize P2P Room on load
     connectToRoom(roomId);
