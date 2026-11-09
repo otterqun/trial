@@ -887,6 +887,90 @@
       background: rgba(255, 158, 68, 0.25);
     }
 
+    /* Self-Diagnostic P2P HUD Overlay */
+    .p2p-diag-hud {
+      position: fixed;
+      top: max(48px, calc(env(safe-area-inset-top, 10px) + 38px));
+      left: max(10px, env(safe-area-inset-left, 10px));
+      z-index: 45;
+      background: rgba(11, 14, 22, 0.9);
+      border: 1px solid rgba(77, 179, 255, 0.35);
+      border-radius: 10px;
+      padding: 8px 10px;
+      font-family: 'Courier New', Courier, monospace;
+      font-size: 10px;
+      line-height: 1.45;
+      color: #d6e2ff;
+      min-width: 215px;
+      max-width: 270px;
+      box-shadow: 0 8px 24px rgba(0, 0, 0, 0.65);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      pointer-events: auto;
+      transition: opacity 0.2s ease, transform 0.2s ease;
+    }
+    .p2p-diag-hud.collapsed .p2p-diag-body {
+      display: none;
+    }
+    .p2p-diag-header {
+      display: flex;
+      align-items: center;
+      justify-content: space-between;
+      gap: 8px;
+      font-weight: 800;
+      color: var(--accent-blue);
+      cursor: pointer;
+      padding-bottom: 4px;
+      border-bottom: 1px solid rgba(255, 255, 255, 0.1);
+      margin-bottom: 5px;
+    }
+    .p2p-diag-hud.collapsed .p2p-diag-header {
+      border-bottom: none;
+      margin-bottom: 0;
+      padding-bottom: 0;
+    }
+    .p2p-diag-row {
+      display: flex;
+      justify-content: space-between;
+      gap: 8px;
+      white-space: nowrap;
+    }
+    .p2p-diag-key {
+      color: var(--text-muted);
+    }
+    .p2p-diag-val {
+      font-weight: 700;
+      color: #fff;
+      overflow: hidden;
+      text-overflow: ellipsis;
+    }
+    .p2p-diag-val.ok { color: var(--accent-green); }
+    .p2p-diag-val.warn { color: var(--accent-yellow); }
+    .p2p-diag-val.err { color: #ff5566; }
+    .p2p-diag-peers {
+      margin-top: 5px;
+      padding-top: 5px;
+      border-top: 1px dashed rgba(255, 255, 255, 0.14);
+      max-height: 95px;
+      overflow-y: auto;
+    }
+    .p2p-peer-item {
+      display: flex;
+      justify-content: space-between;
+      align-items: center;
+      gap: 6px;
+      font-size: 9.5px;
+      padding: 1px 0;
+    }
+    .p2p-peer-id {
+      color: var(--accent-warm);
+      font-weight: 700;
+    }
+    .p2p-peer-ping {
+      color: var(--accent-green);
+      font-weight: 700;
+    }
+
   </style>
 </head>
 <body>
@@ -894,6 +978,39 @@
     <div class="canvas-frame" id="canvasFrame">
       <canvas id="gameCanvas" width="360" height="202"></canvas>
     </div>
+
+    <!-- Self-Diagnostic P2P Overlay -->
+    <aside class="p2p-diag-hud" id="p2pDiagHud" title="Click header to collapse/expand P2P Diagnostics">
+      <div class="p2p-diag-header" id="p2pDiagToggle">
+        <span>📡 P2P DIAGNOSTICS</span>
+        <span id="p2pDiagChevron">▾</span>
+      </div>
+      <div class="p2p-diag-body">
+        <div class="p2p-diag-row">
+          <span class="p2p-diag-key">Room ID:</span>
+          <span class="p2p-diag-val" id="diagRoomId">#lobby</span>
+        </div>
+        <div class="p2p-diag-row">
+          <span class="p2p-diag-key">App ID:</span>
+          <span class="p2p-diag-val" id="diagAppId">pixel-campfire-lounge-v1</span>
+        </div>
+        <div class="p2p-diag-row">
+          <span class="p2p-diag-key">WebRTC:</span>
+          <span class="p2p-diag-val warn" id="diagRtcStatus">Connecting</span>
+        </div>
+        <div class="p2p-diag-row">
+          <span class="p2p-diag-key">Peers:</span>
+          <span class="p2p-diag-val" id="diagPeerCount">0 connected</span>
+        </div>
+        <div class="p2p-diag-row">
+          <span class="p2p-diag-key">Avg RTT:</span>
+          <span class="p2p-diag-val" id="diagAvgPing">-- ms</span>
+        </div>
+        <div class="p2p-diag-peers" id="diagPeerList">
+          <div style="color: var(--text-muted); font-style: italic;">No remote peers yet</div>
+        </div>
+      </div>
+    </aside>
 
     <!-- Top Minimalist Retro HUD -->
     <header class="hud-top">
@@ -1074,12 +1191,44 @@
 
   <!-- Modern ES Module Native Client-Side Engine -->
   <script type="module">
-    import { joinRoom } from 'https://esm.sh/trystero@0.20.0/torrent';
+    import { joinRoom, selfId } from 'https://esm.sh/trystero@0.20.0/nostr';
 
     // ----------------------------------------------------
     // 1. CONFIGURATION & CONSTANTS
     // ----------------------------------------------------
     const APP_ID = 'pixel-campfire-lounge-v1';
+    const DEFAULT_ROOM_ID = 'lobby';
+    const NET_SYNC_HZ = 25; // 25Hz (every 40ms) outbound throttle
+    const NET_INTERVAL = 1000 / NET_SYNC_HZ;
+    const LERP_SPEED = 14; // Frame-rate independent lerp factor
+
+    // Robust Signaling (Nostr Relays + WebTorrent Tracker Fallbacks) & STUN NAT Traversal
+    const P2P_CONFIG = {
+      appId: APP_ID,
+      relayUrls: [
+        'wss://relay.damus.io',
+        'wss://nos.lol',
+        'wss://relay.primal.net',
+        'wss://offchain.pub',
+        'wss://nostr.mom'
+      ],
+      trackerUrls: [
+        'wss://tracker.openwebtorrent.com',
+        'wss://tracker.webtorrent.dev',
+        'wss://tracker.files.fm:7073/announce',
+        'wss://tracker.btorrent.xyz'
+      ],
+      rtcConfig: {
+        iceServers: [
+          { urls: 'stun:stun.l.google.com:19302' },
+          { urls: 'stun:stun1.l.google.com:19302' },
+          { urls: 'stun:stun2.l.google.com:19302' },
+          { urls: 'stun:stun3.l.google.com:19302' },
+          { urls: 'stun:stun4.l.google.com:19302' },
+          { urls: 'stun:stun.cloudflare.com:3478' }
+        ]
+      }
+    };
     const V_WIDTH = 360;
     const V_HEIGHT = 202;
     const FIRE_X = 160;
@@ -1567,51 +1716,129 @@
     document.addEventListener('webkitfullscreenchange', updateFullscreenUI);
 
     // ----------------------------------------------------
-    // 6. NETWORKING (TRYSTERO OVER BITTORRENT TRACKERS)
+    // 6. NETWORKING (TRYSTERO P2P ENGINE, HANDSHAKE & DIAGNOSTICS)
     // ----------------------------------------------------
-    function getRoomCode() {
-      const hash = window.location.hash.replace('#', '').trim();
-      return hash.length > 0 ? hash : 'lobby';
+    const statusDot = document.getElementById('statusDot');
+    const connLabel = document.getElementById('connLabel');
+    const peerCountEl = document.getElementById('peerCount');
+    const roomLabelEl = document.getElementById('roomLabel');
+
+    // Diagnostic HUD Elements
+    const p2pDiagHud = document.getElementById('p2pDiagHud');
+    const p2pDiagToggle = document.getElementById('p2pDiagToggle');
+    const p2pDiagChevron = document.getElementById('p2pDiagChevron');
+    const diagRoomId = document.getElementById('diagRoomId');
+    const diagAppId = document.getElementById('diagAppId');
+    const diagRtcStatus = document.getElementById('diagRtcStatus');
+    const diagPeerCount = document.getElementById('diagPeerCount');
+    const diagAvgPing = document.getElementById('diagAvgPing');
+    const diagPeerList = document.getElementById('diagPeerList');
+
+    p2pDiagToggle?.addEventListener('click', () => {
+      if (!p2pDiagHud) return;
+      p2pDiagHud.classList.toggle('collapsed');
+      if (p2pDiagChevron) {
+        p2pDiagChevron.textContent = p2pDiagHud.classList.contains('collapsed') ? '▸' : '▾';
+      }
+    });
+
+    /**
+     * 1. Robust URL Hash & Room Parsing
+     * Strips leading '#', trims whitespace, sanitizes special characters,
+     * and falls back to DEFAULT_ROOM_ID ('lobby') when empty.
+     */
+    function parseSanitizedRoomId(rawHash = window.location.hash) {
+      let decoded = '';
+      try {
+        decoded = decodeURIComponent(rawHash || '');
+      } catch (err) {
+        decoded = String(rawHash || '');
+      }
+      const cleaned = decoded
+        .replace(/^#+/, '')
+        .trim()
+        .toLowerCase()
+        .replace(/[^a-z0-9_-]/g, '');
+      return cleaned.length > 0 ? cleaned : DEFAULT_ROOM_ID;
     }
 
-    const roomId = getRoomCode();
-    document.getElementById('roomLabel').textContent = `#${roomId}`;
+    function getSanitizedInviteUrl(targetRoomId = roomId) {
+      return `${window.location.origin}${window.location.pathname}#${targetRoomId}`;
+    }
 
-    let room, sendMove, sendChat, sendAction;
+    let roomId = parseSanitizedRoomId();
+    let room = null;
+    let sendMove = null;
+    let sendHandshake = null;
+    let sendChat = null;
+    let sendAction = null;
+    let sendPing = null;
+    let sendPong = null;
+    let rtcConnectionState = 'Connecting';
+    let pingIntervalId = null;
 
-    try {
-      room = joinRoom({ appId: APP_ID }, roomId);
+    function buildLocalPlayerSnapshot() {
+      const themeObj = (CHARACTERS[localPlayer.character] && CHARACTERS[localPlayer.character].theme) || localPlayer.theme || COLOR_THEMES[0];
+      return {
+        x: Math.round(localPlayer.x),
+        y: Math.round(localPlayer.y),
+        dir: localPlayer.dir || 'down',
+        animFrame: localPlayer.animFrame || 0,
+        isMoving: Boolean(localPlayer.isMoving),
+        state: localPlayer.state || 'idle',
+        name: localPlayer.name || 'Camper',
+        character: localPlayer.character || 'steve',
+        color: themeObj.shirt || '#ff9e44',
+        theme: themeObj,
+        fishBite: Boolean(localPlayer.fishBite),
+        ts: Date.now()
+      };
+    }
 
-      const statusDot = document.getElementById('statusDot');
-      const connLabel = document.getElementById('connLabel');
-      const peerCount = document.getElementById('peerCount');
+    function applyRemotePeerState(peer, data, isInitialSnap = false) {
+      if (!peer || !data) return;
+      if (typeof data.x === 'number' && !Number.isNaN(data.x)) {
+        peer.targetX = data.x;
+        if (isInitialSnap || !peer.hasSyncedPosition) {
+          peer.x = data.x;
+        }
+      }
+      if (typeof data.y === 'number' && !Number.isNaN(data.y)) {
+        peer.targetY = data.y;
+        if (isInitialSnap || !peer.hasSyncedPosition) {
+          peer.y = data.y;
+        }
+      }
+      if (typeof data.x === 'number' && typeof data.y === 'number') {
+        peer.hasSyncedPosition = true;
+      }
+      if (data.dir) peer.dir = data.dir;
+      if (typeof data.animFrame === 'number') peer.animFrame = data.animFrame;
+      if (typeof data.isMoving === 'boolean') peer.isMoving = data.isMoving;
+      if (data.name) peer.name = data.name;
+      if (data.character) peer.character = data.character;
+      if (data.color) peer.color = data.color;
+      if (data.theme) peer.theme = data.theme;
+      if (data.state) peer.state = data.state;
+      if (typeof data.fishBite === 'boolean') peer.fishBite = data.fishBite;
+      peer.lastSeen = performance.now();
+    }
 
-      const actions = room.makeAction('move');
-      sendMove = actions[0];
-      const getMove = actions[1];
-
-      const chatActions = room.makeAction('chat');
-      sendChat = chatActions[0];
-      const getChat = chatActions[1];
-
-      const customActions = room.makeAction('action');
-      sendAction = customActions[0];
-      const getAction = customActions[1];
-
-      room.onPeerJoin(peerId => {
-        statusDot.classList.add('connected');
-        connLabel.textContent = window.innerWidth <= 600 ? 'Online' : 'P2P Online';
-
-        // Add placeholder peer
-        peers.set(peerId, {
+    function ensurePeerEntity(peerId) {
+      let peer = peers.get(peerId);
+      if (!peer) {
+        peer = {
           id: peerId,
-          name: 'Camper',
+          name: `Peer-${peerId.slice(0, 4)}`,
           character: 'steve',
+          color: COLOR_THEMES[0].shirt,
           theme: COLOR_THEMES[0],
           x: 160,
           y: 110,
           targetX: 160,
           targetY: 110,
+          hasSyncedPosition: false,
+          handshakeComplete: false,
           dir: 'down',
           isMoving: false,
           state: 'idle',
@@ -1621,55 +1848,265 @@
           bubbleTimer: 0,
           fishBite: false,
           fishCatchNotice: null,
-          fishNoticeTimer: 0
+          fishNoticeTimer: 0,
+          rtt: null,
+          lastSeen: performance.now(),
+          retryTimer: null
+        };
+        peers.set(peerId, peer);
+      }
+      return peer;
+    }
+
+    function updatePeerCountUI() {
+      const remoteCount = peers.size;
+      const totalCount = remoteCount + 1;
+      const isMobile = window.innerWidth <= 600;
+
+      if (peerCountEl) {
+        peerCountEl.textContent = isMobile ? `${totalCount}` : `${totalCount} ${totalCount === 1 ? 'camper' : 'campers'}`;
+      }
+      if (roomLabelEl) {
+        roomLabelEl.textContent = `#${roomId}`;
+      }
+
+      if (rtcConnectionState === 'Disconnected') {
+        statusDot?.classList.remove('connected');
+        if (connLabel) connLabel.textContent = 'Disconnected';
+      } else if (remoteCount === 0) {
+        statusDot?.classList.remove('connected');
+        if (connLabel) connLabel.textContent = isMobile ? 'Lobby' : 'Waiting for peers...';
+      } else {
+        statusDot?.classList.add('connected');
+        if (connLabel) connLabel.textContent = isMobile ? 'Online' : 'P2P Connected';
+      }
+
+      updateDiagnosticsHUD();
+    }
+
+    function updateDiagnosticsHUD() {
+      if (diagRoomId) diagRoomId.textContent = `#${roomId}`;
+      if (diagAppId) diagAppId.textContent = `${APP_ID} (${(selfId || '').slice(0, 5) || 'local'})`;
+
+      const remoteCount = peers.size;
+      if (diagRtcStatus) {
+        const displayStatus = rtcConnectionState === 'Disconnected'
+          ? 'Disconnected'
+          : (remoteCount > 0 ? 'Connected' : 'Connecting (Signaling)');
+        diagRtcStatus.textContent = displayStatus;
+        diagRtcStatus.className = 'p2p-diag-val ' + (
+          displayStatus === 'Connected' ? 'ok' : (displayStatus === 'Disconnected' ? 'err' : 'warn')
+        );
+      }
+
+      if (diagPeerCount) {
+        diagPeerCount.textContent = `${remoteCount} active (${remoteCount + 1} total)`;
+      }
+
+      // Compute average RTT ping across connected peers
+      const rtts = [];
+      const peerRows = [];
+      for (const [pid, p] of peers.entries()) {
+        if (typeof p.rtt === 'number') rtts.push(p.rtt);
+        const shortId = pid.slice(0, 6);
+        const pingStr = typeof p.rtt === 'number' ? `${p.rtt}ms` : '...';
+        const posStr = `${Math.round(p.x)},${Math.round(p.y)}`;
+        peerRows.push(
+          `<div class="p2p-peer-item">` +
+            `<span class="p2p-peer-id" title="${pid}">${shortId} (${p.name || 'Camper'})</span>` +
+            `<span>[${posStr}] <span class="p2p-peer-ping">${pingStr}</span></span>` +
+          `</div>`
+        );
+      }
+
+      if (diagAvgPing) {
+        if (rtts.length > 0) {
+          const avg = Math.round(rtts.reduce((a, b) => a + b, 0) / rtts.length);
+          diagAvgPing.textContent = `${avg} ms`;
+        } else {
+          diagAvgPing.textContent = '-- ms';
+        }
+      }
+
+      if (diagPeerList) {
+        if (peerRows.length > 0) {
+          diagPeerList.innerHTML = peerRows.join('');
+        } else {
+          diagPeerList.innerHTML = `<div style="color: var(--text-muted); font-style: italic;">No remote peers in #${roomId}</div>`;
+        }
+      }
+    }
+
+    function cleanupCurrentRoom() {
+      if (pingIntervalId) {
+        clearInterval(pingIntervalId);
+        pingIntervalId = null;
+      }
+      for (const p of peers.values()) {
+        if (p.retryTimer) clearTimeout(p.retryTimer);
+      }
+      peers.clear();
+
+      if (room) {
+        try {
+          console.info(`[P2P:LEAVE] Leaving previous room instance...`);
+          room.leave();
+        } catch (err) {
+          console.warn('[P2P:ERROR] Error leaving previous room:', err);
+        }
+        room = null;
+      }
+      sendMove = null;
+      sendHandshake = null;
+      sendChat = null;
+      sendAction = null;
+      sendPing = null;
+      sendPong = null;
+    }
+
+    function connectToRoom(targetRoomId) {
+      cleanupCurrentRoom();
+
+      roomId = targetRoomId;
+      // Keep URL hash cleanly normalized without triggering hashchange recursion
+      const expectedHash = `#${roomId}`;
+      if (window.location.hash !== expectedHash) {
+        window.history.replaceState(null, '', expectedHash);
+      }
+
+      rtcConnectionState = 'Connecting';
+      updatePeerCountUI();
+
+      console.info(`[P2P:INIT] Joining room "#${roomId}" (appId: "${APP_ID}", selfId: "${selfId}")`, P2P_CONFIG);
+
+      try {
+        room = joinRoom(P2P_CONFIG, roomId);
+
+        const moveActions = room.makeAction('move');
+        sendMove = moveActions[0];
+        const getMove = moveActions[1];
+
+        const hsActions = room.makeAction('hs');
+        sendHandshake = hsActions[0];
+        const getHandshake = hsActions[1];
+
+        const chatActions = room.makeAction('chat');
+        sendChat = chatActions[0];
+        const getChat = chatActions[1];
+
+        const customActions = room.makeAction('action');
+        sendAction = customActions[0];
+        const getAction = customActions[1];
+
+        const pingActions = room.makeAction('ping');
+        sendPing = pingActions[0];
+        const getPing = pingActions[1];
+
+        const pongActions = room.makeAction('pong');
+        sendPong = pongActions[0];
+        const getPong = pongActions[1];
+
+        // 3. Late-Joiner Synchronization (Full Two-Way Handshake Lifecycle)
+        room.onPeerJoin(peerId => {
+          rtcConnectionState = 'Connected';
+          console.info(`[P2P:JOIN] Peer connected: ${peerId} in room #${roomId}`);
+
+          const peer = ensurePeerEntity(peerId);
+          updatePeerCountUI();
+
+          // Step 1 of Handshake: Immediately send SYN with our full local state targeted to peerId
+          const synPayload = {
+            type: 'SYN',
+            state: buildLocalPlayerSnapshot()
+          };
+          console.info(`[P2P:STATE] Sending SYN handshake to ${peerId}`, synPayload.state);
+          sendHandshake(synPayload, peerId);
+          sendMove(synPayload.state, peerId);
+
+          // Safety retry in case the newcomer's data channel listener was still binding
+          if (peer.retryTimer) clearTimeout(peer.retryTimer);
+          peer.retryTimer = setTimeout(() => {
+            const activePeer = peers.get(peerId);
+            if (activePeer && !activePeer.handshakeComplete && sendHandshake) {
+              const retryPayload = {
+                type: 'SYN',
+                state: buildLocalPlayerSnapshot()
+              };
+              console.info(`[P2P:STATE] Retrying SYN handshake to ${peerId}`);
+              sendHandshake(retryPayload, peerId);
+            }
+          }, 900);
+
+          // Trigger an immediate ping measurement
+          if (sendPing) {
+            sendPing({ t: performance.now() }, peerId);
+          }
         });
 
-        updatePeerCountUI();
+        room.onPeerLeave(peerId => {
+          console.info(`[P2P:LEAVE] Peer disconnected: ${peerId} from room #${roomId}`);
+          const peer = peers.get(peerId);
+          if (peer && peer.retryTimer) {
+            clearTimeout(peer.retryTimer);
+          }
+          peers.delete(peerId);
+          rtcConnectionState = peers.size > 0 ? 'Connected' : 'Connecting';
+          updatePeerCountUI();
+        });
 
-        // Immediately transmit our current position and state to newcomer
-        sendMove({
-          x: Math.round(localPlayer.x),
-          y: Math.round(localPlayer.y),
-          dir: localPlayer.dir,
-          isMoving: localPlayer.isMoving,
-          name: localPlayer.name,
-          character: localPlayer.character,
-          theme: localPlayer.theme,
-          state: localPlayer.state
-        }, peerId);
-      });
+        // Two-way Handshake Receiver (SYN -> ACK)
+        getHandshake((payload, peerId) => {
+          if (!payload || !payload.state) return;
+          const peer = ensurePeerEntity(peerId);
+          const isFirstSync = !peer.hasSyncedPosition;
 
-      room.onPeerLeave(peerId => {
-        peers.delete(peerId);
-        updatePeerCountUI();
-      });
+          applyRemotePeerState(peer, payload.state, isFirstSync);
+          peer.handshakeComplete = true;
+          if (peer.retryTimer) {
+            clearTimeout(peer.retryTimer);
+            peer.retryTimer = null;
+          }
 
-      getMove((data, peerId) => {
-        const p = peers.get(peerId);
-        if (p) {
-          p.targetX = data.x;
-          p.targetY = data.y;
-          p.dir = data.dir || p.dir;
-          p.isMoving = data.isMoving;
-          if (data.name) p.name = data.name;
-          if (data.character) p.character = data.character;
-          if (data.theme) p.theme = data.theme;
-          if (data.state) p.state = data.state;
-        }
-      });
+          console.info(`[P2P:STATE] Received ${payload.type || 'SYNC'} from ${peerId}:`, payload.state);
 
-      getChat((data, peerId) => {
-        const p = peers.get(peerId);
-        if (p) {
+          // Step 2 of Handshake: If we received a SYN, acknowledge immediately with our own current state (ACK)
+          if (payload.type === 'SYN' && sendHandshake) {
+            const ackPayload = {
+              type: 'ACK',
+              state: buildLocalPlayerSnapshot()
+            };
+            console.info(`[P2P:STATE] Sending ACK handshake to ${peerId}`, ackPayload.state);
+            sendHandshake(ackPayload, peerId);
+          }
+
+          updateDiagnosticsHUD();
+        });
+
+        // High-frequency Movement & State Updates
+        getMove((data, peerId) => {
+          if (!data) return;
+          const peer = ensurePeerEntity(peerId);
+          const isFirstSync = !peer.hasSyncedPosition;
+          applyRemotePeerState(peer, data, isFirstSync);
+          if (isFirstSync) {
+            console.info(`[P2P:STATE] Initial position synced via move from ${peerId}: (${data.x}, ${data.y})`);
+            updateDiagnosticsHUD();
+          }
+        });
+
+        getChat((data, peerId) => {
+          if (!data) return;
+          const p = ensurePeerEntity(peerId);
           p.bubble = data.text;
           p.bubbleTimer = 4.0;
+          console.info(`[P2P:STATE] Chat from ${peerId}: "${data.text}"`);
           audio.playTextBlip();
-        }
-      });
+        });
 
-      getAction((data, peerId) => {
-        const p = peers.get(peerId);
-        if (p) {
+        getAction((data, peerId) => {
+          if (!data) return;
+          const p = ensurePeerEntity(peerId);
+          console.info(`[P2P:STATE] Action from ${peerId}:`, data);
           if (data.type === 'sit') {
             p.state = 'sitting';
             p.targetX = data.x;
@@ -1685,26 +2122,54 @@
               p.fishNoticeTimer = 2.5;
             }
           }
-        }
-      });
+        });
 
-      function updatePeerCountUI() {
-        const count = peers.size + 1;
-        const isMobile = window.innerWidth <= 600;
-        peerCount.textContent = isMobile ? `${count}` : `${count} ${count === 1 ? 'camper' : 'campers'}`;
-        if (peers.size === 0) {
-          statusDot.classList.remove('connected');
-          connLabel.textContent = isMobile ? 'Lobby' : 'In cozy lobby';
-        } else {
-          statusDot.classList.add('connected');
-          connLabel.textContent = isMobile ? 'Online' : 'P2P Online';
-        }
+        // Per-Peer Round-Trip Latency (Ping / Pong)
+        getPing((data, peerId) => {
+          if (sendPong && data && typeof data.t === 'number') {
+            sendPong({ t: data.t }, peerId);
+          }
+        });
+
+        getPong((data, peerId) => {
+          if (!data || typeof data.t !== 'number') return;
+          const rtt = Math.max(1, Math.round(performance.now() - data.t));
+          const peer = peers.get(peerId);
+          if (peer) {
+            peer.rtt = rtt;
+            peer.lastSeen = performance.now();
+          }
+          updateDiagnosticsHUD();
+        });
+
+        // Periodic Ping Heartbeat (every 2.5s)
+        pingIntervalId = setInterval(() => {
+          if (!sendPing || peers.size === 0) return;
+          const nowPerf = performance.now();
+          for (const peerId of peers.keys()) {
+            sendPing({ t: nowPerf }, peerId);
+          }
+        }, 2500);
+
+      } catch (e) {
+        rtcConnectionState = 'Disconnected';
+        console.error('[P2P:ERROR] Trystero connection error:', e);
+        updatePeerCountUI();
       }
-
-    } catch (e) {
-      console.error('Trystero connection error:', e);
-      document.getElementById('connLabel').textContent = 'Offline Mode';
     }
+
+    // Initialize P2P Room on load
+    connectToRoom(roomId);
+
+    // Dynamic URL Hash Room Switching without manual hard reload
+    window.addEventListener('hashchange', () => {
+      const nextRoomId = parseSanitizedRoomId(window.location.hash);
+      if (nextRoomId !== roomId) {
+        console.info(`[P2P:INIT] URL hash changed -> switching room from "#${roomId}" to "#${nextRoomId}"`);
+        showToast(`🏕️ Switching to room #${nextRoomId}...`);
+        connectToRoom(nextRoomId);
+      }
+    });
 
     // ----------------------------------------------------
     // 7. INPUT & INTERACTION HANDLING
@@ -2044,21 +2509,46 @@
       toastTimeout = setTimeout(() => toastEl.classList.remove('show'), duration);
     }
 
-    // Copy Invite Link
+    // Copy Invite Link (Outputs exact sanitized URL: ${origin}${pathname}#${roomId})
     document.getElementById('copyInviteBtn').addEventListener('click', () => {
       audio.init();
-      const url = `${window.location.origin}${window.location.pathname}#${roomId}`;
-      navigator.clipboard.writeText(url).then(() => {
-        showToast('🔗 Pautan invite lounge berjaya disalin!');
-      });
+      const sanitizedRoom = parseSanitizedRoomId();
+      const url = `${window.location.origin}${window.location.pathname}#${sanitizedRoom}`;
+      if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(url).then(() => {
+          console.info(`[P2P:INIT] Copied room invite link: ${url}`);
+          showToast(`🔗 Invite copied: #${sanitizedRoom}`);
+        }).catch(() => {
+          fallbackCopyText(url, sanitizedRoom);
+        });
+      } else {
+        fallbackCopyText(url, sanitizedRoom);
+      }
     });
 
+    function fallbackCopyText(text, sanitizedRoom) {
+      const ta = document.createElement('textarea');
+      ta.value = text;
+      ta.style.position = 'fixed';
+      ta.style.opacity = '0';
+      document.body.appendChild(ta);
+      ta.select();
+      try {
+        document.execCommand('copy');
+        showToast(`🔗 Invite copied: #${sanitizedRoom}`);
+      } catch (err) {
+        showToast(`🔗 Link: ${text}`);
+      }
+      document.body.removeChild(ta);
+    }
+
     // ----------------------------------------------------
-    // 8. GAME TICK & UPDATE LOGIC (20Hz SYNC)
+    // 8. GAME TICK & UPDATE LOGIC (25Hz THROTTLED SYNC & LERP)
     // ----------------------------------------------------
     let lastTime = performance.now();
     let networkTimer = 0;
-    const NET_INTERVAL = 1000 / 20; // 50ms (20Hz)
+    let lastSentSnapshot = { x: -1, y: -1, dir: '', isMoving: false, animFrame: -1, state: '' };
+    let heartbeatCounter = 0;
 
     function update(dt, now) {
       // 1. Campfire ember particles
@@ -2288,10 +2778,22 @@
         if (localPlayer.fishNoticeTimer <= 0) localPlayer.fishCatchNotice = null;
       }
 
-      // 7. Peers entity interpolation (Lerp)
+      // 7. Peers entity interpolation (Frame-rate independent Lerp)
+      const lerpAlpha = Math.min(1, dt * LERP_SPEED);
       for (const peer of peers.values()) {
-        peer.x += (peer.targetX - peer.x) * 0.2;
-        peer.y += (peer.targetY - peer.y) * 0.2;
+        const distToTarget = Math.hypot(peer.targetX - peer.x, peer.targetY - peer.y);
+        if (distToTarget > 80 || !peer.hasSyncedPosition) {
+          // Teleport/snap if distance is huge (e.g. initial spawn or room reset)
+          peer.x = peer.targetX;
+          peer.y = peer.targetY;
+          peer.hasSyncedPosition = true;
+        } else if (distToTarget > 0.15) {
+          peer.x += (peer.targetX - peer.x) * lerpAlpha;
+          peer.y += (peer.targetY - peer.y) * lerpAlpha;
+        } else {
+          peer.x = peer.targetX;
+          peer.y = peer.targetY;
+        }
 
         if (peer.isMoving) {
           peer.animTimer += dt * 8;
@@ -2310,20 +2812,35 @@
         }
       }
 
-      // 8. Network sync throttled to 20Hz
+      // 8. Network sync throttled to 25Hz (40ms) with delta compression & periodic keep-alive
       networkTimer += dt * 1000;
       if (networkTimer >= NET_INTERVAL) {
         networkTimer = 0;
-        if (sendMove && (localPlayer.isMoving || Math.random() < 0.05)) {
-          sendMove({
-            x: Math.round(localPlayer.x),
-            y: Math.round(localPlayer.y),
-            dir: localPlayer.dir,
-            isMoving: localPlayer.isMoving,
-            name: localPlayer.name,
-            character: localPlayer.character,
-            state: localPlayer.state
-          });
+        heartbeatCounter++;
+
+        const curX = Math.round(localPlayer.x);
+        const curY = Math.round(localPlayer.y);
+        const hasDelta =
+          curX !== lastSentSnapshot.x ||
+          curY !== lastSentSnapshot.y ||
+          localPlayer.dir !== lastSentSnapshot.dir ||
+          localPlayer.isMoving !== lastSentSnapshot.isMoving ||
+          localPlayer.animFrame !== lastSentSnapshot.animFrame ||
+          localPlayer.state !== lastSentSnapshot.state;
+
+        // Broadcast when state/position changes or every ~1s (25 ticks) as keep-alive
+        if (sendMove && peers.size > 0 && (hasDelta || heartbeatCounter >= 25)) {
+          heartbeatCounter = 0;
+          const snapshot = buildLocalPlayerSnapshot();
+          lastSentSnapshot = {
+            x: snapshot.x,
+            y: snapshot.y,
+            dir: snapshot.dir,
+            isMoving: snapshot.isMoving,
+            animFrame: snapshot.animFrame,
+            state: snapshot.state
+          };
+          sendMove(snapshot);
         }
       }
     }
@@ -2791,18 +3308,14 @@
         const def = CHARACTERS[selectedCharKey] || CHARACTERS.steve;
         showToast(`Karakter ditukar kepada ${def.name}! ✨`);
 
-        // Broadcast immediately to peers
+        // Broadcast updated profile & state immediately to all connected peers
+        const snapshot = buildLocalPlayerSnapshot();
+        console.info('[P2P:STATE] Broadcasting updated character/profile to peers:', snapshot);
         if (sendMove) {
-          sendMove({
-            x: Math.round(localPlayer.x),
-            y: Math.round(localPlayer.y),
-            dir: localPlayer.dir,
-            isMoving: localPlayer.isMoving,
-            name: localPlayer.name,
-            character: localPlayer.character,
-            theme: localPlayer.theme,
-            state: localPlayer.state
-          });
+          sendMove(snapshot);
+        }
+        if (sendHandshake) {
+          sendHandshake({ type: 'ACK', state: snapshot });
         }
       });
     }

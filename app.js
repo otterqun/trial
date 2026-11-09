@@ -1,14 +1,15 @@
 /**
  * Neon Tag Arena — P2P Multiplayer Web Game
- * Zero-Backend Architecture powered by Trystero (BitTorrent strategy)
+ * Zero-Backend Architecture powered by Trystero (Nostr + STUN NAT Traversal)
  */
 
-import { joinRoom } from 'https://esm.sh/trystero@0.20.0/torrent';
+import { joinRoom, selfId } from 'https://esm.sh/trystero@0.20.0/nostr';
 
 // --------------------------------------------------
 // CONFIG & CONSTANTS
 // --------------------------------------------------
 const APP_ID = 'neon-tag-arena-v1';
+const DEFAULT_ROOM_ID = 'lobby';
 const ARENA_WIDTH = 2400;
 const ARENA_HEIGHT = 1600;
 const PLAYER_RADIUS = 22;
@@ -16,8 +17,36 @@ const BASE_SPEED = 240; // px per second
 const DASH_SPEED = 500;
 const DASH_DURATION = 0.25; // seconds
 const DASH_COOLDOWN = 2.0; // seconds
-const NETWORK_TICK_RATE = 25; // 25 updates/sec (~40ms)
+const NETWORK_TICK_RATE = 25; // 25 updates/sec (40ms)
+const LERP_SPEED = 14;
 const TAG_COOLDOWN_TIME = 3.0; // seconds after being tagged before you can tag back
+
+const P2P_CONFIG = {
+  appId: APP_ID,
+  relayUrls: [
+    'wss://relay.damus.io',
+    'wss://nos.lol',
+    'wss://relay.primal.net',
+    'wss://offchain.pub',
+    'wss://nostr.mom'
+  ],
+  trackerUrls: [
+    'wss://tracker.openwebtorrent.com',
+    'wss://tracker.webtorrent.dev',
+    'wss://tracker.files.fm:7073/announce',
+    'wss://tracker.btorrent.xyz'
+  ],
+  rtcConfig: {
+    iceServers: [
+      { urls: 'stun:stun.l.google.com:19302' },
+      { urls: 'stun:stun1.l.google.com:19302' },
+      { urls: 'stun:stun2.l.google.com:19302' },
+      { urls: 'stun:stun3.l.google.com:19302' },
+      { urls: 'stun:stun4.l.google.com:19302' },
+      { urls: 'stun:stun.cloudflare.com:3478' }
+    ]
+  }
+};
 
 const COLOR_PALETTE = [
   '#00f0ff', '#ff007b', '#00ff88', '#ffe600',
@@ -159,26 +188,78 @@ function showToast(msg) {
 // --------------------------------------------------
 // ROOM & NETWORKING (TRYSTERO)
 // --------------------------------------------------
-function getRoomFromHash() {
-  const hash = window.location.hash.replace('#', '').trim();
-  return hash.length > 0 ? hash : 'lobby';
+let pingIntervalId = null;
+
+function getRoomFromHash(rawHash = window.location.hash) {
+  let decoded = '';
+  try {
+    decoded = decodeURIComponent(rawHash || '');
+  } catch (err) {
+    decoded = String(rawHash || '');
+  }
+  const cleaned = decoded
+    .replace(/^#+/, '')
+    .trim()
+    .toLowerCase()
+    .replace(/[^a-z0-9_-]/g, '');
+  return cleaned.length > 0 ? cleaned : DEFAULT_ROOM_ID;
+}
+
+function buildLocalSnapshot() {
+  return {
+    x: Math.round(state.localPlayer.x),
+    y: Math.round(state.localPlayer.y),
+    dir: state.localPlayer.dir || 'down',
+    animFrame: state.localPlayer.animFrame || 0,
+    name: state.localPlayer.name,
+    color: state.localPlayer.color,
+    isIt: state.localPlayer.isIt,
+    score: state.localPlayer.score
+  };
+}
+
+function cleanupRoom() {
+  if (pingIntervalId) {
+    clearInterval(pingIntervalId);
+    pingIntervalId = null;
+  }
+  state.peers.clear();
+  if (state.room) {
+    try {
+      console.info('[P2P:LEAVE] Leaving previous room instance...');
+      state.room.leave();
+    } catch (e) {
+      console.warn('[P2P:ERROR] Failed leaving room:', e);
+    }
+    state.room = null;
+  }
+  state.actions = {};
 }
 
 function initMultiplayer() {
+  cleanupRoom();
+
+  state.myId = selfId;
+  state.localPlayer.id = selfId;
   state.roomId = getRoomFromHash();
-  roomCodeDisplay.textContent = `#${state.roomId}`;
+  if (window.location.hash !== `#${state.roomId}`) {
+    window.history.replaceState(null, '', `#${state.roomId}`);
+  }
+  if (roomCodeDisplay) roomCodeDisplay.textContent = `#${state.roomId}`;
 
   // Read saved nickname if any
   const savedName = localStorage.getItem('neon_tag_name');
   if (savedName) state.localPlayer.name = savedName;
 
+  console.info(`[P2P:INIT] Connecting to room "#${state.roomId}" (appId: "${APP_ID}", selfId: "${selfId}")`);
+
   // Initialize Trystero Room
   try {
-    const room = joinRoom({ appId: APP_ID }, state.roomId);
+    const room = joinRoom(P2P_CONFIG, state.roomId);
     state.room = room;
 
-    connBadge.className = 'status-badge connecting';
-    connLabel.textContent = 'Connecting...';
+    if (connBadge) connBadge.className = 'status-badge connecting';
+    if (connLabel) connLabel.textContent = 'Connecting...';
 
     // Core Trystero Actions
     const [sendPos, getPos] = room.makeAction('pos');
@@ -190,12 +271,12 @@ function initMultiplayer() {
 
     state.actions = { sendPos, sendTag, sendChat, sendPing, sendPong, sendSync };
 
-    // When a new peer joins
+    // When a new peer joins (Two-way Handshake Lifecycle)
     room.onPeerJoin(peerId => {
-      connBadge.className = 'status-badge connected';
-      connLabel.textContent = 'Connected (P2P)';
+      console.info(`[P2P:JOIN] Peer joined room #${state.roomId}: ${peerId}`);
+      if (connBadge) connBadge.className = 'status-badge connected';
+      if (connLabel) connLabel.textContent = 'Connected (P2P)';
 
-      // Host election: lexicographically lowest peerId determines default 'IT' if nobody is IT
       state.peers.set(peerId, {
         id: peerId,
         name: 'Guest',
@@ -204,6 +285,9 @@ function initMultiplayer() {
         y: ARENA_HEIGHT / 2,
         targetX: ARENA_WIDTH / 2,
         targetY: ARENA_HEIGHT / 2,
+        hasSyncedPosition: false,
+        dir: 'down',
+        animFrame: 0,
         isIt: false,
         score: 0,
         bubble: null,
@@ -214,24 +298,30 @@ function initMultiplayer() {
       updatePeerCount();
       showToast(`Peer joined: ${peerId.slice(0, 5)}`);
 
-      // Immediately send our state to the newcomer
-      sendSync({
-        name: state.localPlayer.name,
-        color: state.localPlayer.color,
-        isIt: state.localPlayer.isIt,
-        score: state.localPlayer.score
-      }, peerId);
+      // Step 1: Immediately send our full state (SYN) targeted directly to newcomer
+      const synState = { type: 'SYN', ...buildLocalSnapshot() };
+      console.info(`[P2P:STATE] Sending SYN handshake to ${peerId}:`, synState);
+      sendSync(synState, peerId);
+      sendPos(synState, peerId);
+      sendPing(performance.now(), peerId);
 
       resolveTagRoleHost();
     });
 
     // When peer leaves
     room.onPeerLeave(peerId => {
+      console.info(`[P2P:LEAVE] Peer left room #${state.roomId}: ${peerId}`);
       const peer = state.peers.get(peerId);
       const wasIt = peer ? peer.isIt : false;
       state.peers.delete(peerId);
       updatePeerCount();
-      showToast(`Player left`);
+      showToast(`Player left (${peerId.slice(0, 5)})`);
+
+      if (state.peers.size === 0) {
+        if (connBadge) connBadge.className = 'status-badge connecting';
+        if (connLabel) connLabel.textContent = 'Waiting for peers...';
+        if (pingVal) pingVal.textContent = '-- ms';
+      }
 
       // If the person who was "IT" left, pick a new IT
       if (wasIt) {
@@ -246,9 +336,16 @@ function initMultiplayer() {
     // Action listeners
     getPos((data, peerId) => {
       const peer = state.peers.get(peerId);
-      if (peer) {
+      if (peer && data) {
         peer.targetX = data.x;
         peer.targetY = data.y;
+        if (!peer.hasSyncedPosition) {
+          peer.x = data.x;
+          peer.y = data.y;
+          peer.hasSyncedPosition = true;
+        }
+        if (data.dir) peer.dir = data.dir;
+        if (typeof data.animFrame === 'number') peer.animFrame = data.animFrame;
         if (data.name) peer.name = data.name;
         if (data.color) peer.color = data.color;
         if (typeof data.isIt === 'boolean') peer.isIt = data.isIt;
@@ -257,12 +354,14 @@ function initMultiplayer() {
     });
 
     getTag((data, peerId) => {
+      console.info(`[P2P:STATE] Tag event from ${peerId}:`, data);
       handleTagEvent(data.taggedId, data.taggerId);
     });
 
     getChat((data, peerId) => {
       const peer = state.peers.get(peerId);
-      if (peer) {
+      if (peer && data) {
+        console.info(`[P2P:STATE] Chat from ${peerId}: "${data.text}"`);
         peer.bubble = data.text;
         peer.bubbleTimer = 3.5;
         sfx.playPop();
@@ -271,12 +370,31 @@ function initMultiplayer() {
 
     getSync((data, peerId) => {
       const peer = state.peers.get(peerId);
-      if (peer) {
-        peer.name = data.name;
-        peer.color = data.color;
-        peer.isIt = data.isIt;
-        peer.score = data.score;
+      if (peer && data) {
+        console.info(`[P2P:STATE] Handshake (${data.type || 'SYNC'}) received from ${peerId}:`, data);
+        if (typeof data.x === 'number' && typeof data.y === 'number') {
+          peer.targetX = data.x;
+          peer.targetY = data.y;
+          if (!peer.hasSyncedPosition) {
+            peer.x = data.x;
+            peer.y = data.y;
+            peer.hasSyncedPosition = true;
+          }
+        }
+        if (data.dir) peer.dir = data.dir;
+        if (typeof data.animFrame === 'number') peer.animFrame = data.animFrame;
+        if (data.name) peer.name = data.name;
+        if (data.color) peer.color = data.color;
+        if (typeof data.isIt === 'boolean') peer.isIt = data.isIt;
+        if (data.score !== undefined) peer.score = data.score;
         updateLeaderboard();
+
+        // Step 2: Acknowledge SYN with ACK containing our full current state
+        if (data.type === 'SYN') {
+          const ackState = { type: 'ACK', ...buildLocalSnapshot() };
+          console.info(`[P2P:STATE] Sending ACK handshake to ${peerId}:`, ackState);
+          sendSync(ackState, peerId);
+        }
       }
     });
 
@@ -289,25 +407,36 @@ function initMultiplayer() {
       const rtt = Math.max(1, Math.round(performance.now() - time));
       const peer = state.peers.get(peerId);
       if (peer) peer.ping = rtt;
-      pingVal.textContent = `${rtt} ms`;
+      if (pingVal) pingVal.textContent = `${rtt} ms`;
     });
 
-    // Ping peer every 4 seconds
-    setInterval(() => {
-      const peers = Array.from(state.peers.keys());
-      if (peers.length > 0) {
-        sendPing(performance.now(), peers[0]);
-      } else {
+    // Ping all connected peers every 2.5 seconds
+    pingIntervalId = setInterval(() => {
+      const peerIds = Array.from(state.peers.keys());
+      if (peerIds.length > 0) {
+        const nowPerf = performance.now();
+        for (const pid of peerIds) {
+          sendPing(nowPerf, pid);
+        }
+      } else if (pingVal) {
         pingVal.textContent = '-- ms';
       }
-    }, 4000);
+    }, 2500);
 
   } catch (err) {
-    console.error('Trystero Join Room Error:', err);
-    connBadge.className = 'status-badge error';
-    connLabel.textContent = 'Connection Error';
+    console.error('[P2P:ERROR] Trystero Join Room Error:', err);
+    if (connBadge) connBadge.className = 'status-badge error';
+    if (connLabel) connLabel.textContent = 'Connection Error';
   }
 }
+
+window.addEventListener('hashchange', () => {
+  const nextRoom = getRoomFromHash(window.location.hash);
+  if (nextRoom !== state.roomId) {
+    console.info(`[P2P:INIT] URL hash changed -> switching to #${nextRoom}`);
+    initMultiplayer();
+  }
+});
 
 function resolveTagRoleHost() {
   // If only 1 player, default them to IT
@@ -866,15 +995,18 @@ cancelModalBtn.addEventListener('click', () => {
 
 joinModalBtn.addEventListener('click', () => {
   sfx.init();
-  const newRoom = roomInput.value.trim().toLowerCase().replace(/[^a-z0-9_-]/g, '') || 'lobby';
+  const newRoom = getRoomFromHash(roomInput.value);
   const newName = nameInput.value.trim() || 'Player';
 
   localStorage.setItem('neon_tag_name', newName);
   state.localPlayer.name = newName;
 
   roomModal.close();
-  window.location.hash = newRoom;
-  window.location.reload();
+  if (window.location.hash !== `#${newRoom}`) {
+    window.location.hash = newRoom;
+  } else {
+    initMultiplayer();
+  }
 });
 
 // Mobile Virtual Joystick Handlers
