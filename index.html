@@ -649,6 +649,103 @@
       #connLabel {
         display: none;
       }
+      #timeLabel {
+        display: none;
+      }
+    }
+
+    /* Orientation Guidance Modal */
+    .orientation-modal-overlay {
+      position: fixed;
+      top: 0;
+      left: 0;
+      right: 0;
+      bottom: 0;
+      background: rgba(4, 7, 13, 0.88);
+      backdrop-filter: blur(8px);
+      -webkit-backdrop-filter: blur(8px);
+      z-index: 1999;
+      display: none;
+      align-items: center;
+      justify-content: center;
+      padding: 16px;
+      opacity: 0;
+      pointer-events: none;
+      transition: opacity 0.25s ease;
+    }
+    .orientation-modal-overlay.open {
+      display: flex;
+      opacity: 1;
+      pointer-events: auto;
+    }
+    @media (orientation: landscape) {
+      .orientation-modal-overlay.open {
+        display: none !important;
+      }
+    }
+    @keyframes phoneTilt {
+      0%, 20% { transform: rotate(0deg) scale(1); }
+      45%, 75% { transform: rotate(-90deg) scale(1.1); }
+      90%, 100% { transform: rotate(0deg) scale(1); }
+    }
+    .orient-icon-anim {
+      font-size: 38px;
+      display: inline-block;
+      margin-bottom: 8px;
+      animation: phoneTilt 2.2s ease-in-out infinite;
+    }
+    .orientation-modal-dialog {
+      background: linear-gradient(165deg, #171d2b 0%, #0e121c 100%);
+      border: 2px solid rgba(255, 158, 68, 0.5);
+      border-radius: 16px;
+      width: 100%;
+      max-width: 360px;
+      padding: 22px 20px;
+      text-align: center;
+      box-shadow: 0 12px 36px rgba(0, 0, 0, 0.85), 0 0 24px rgba(255, 158, 68, 0.25);
+    }
+    .orient-title {
+      font-size: 15px;
+      font-weight: 800;
+      color: var(--accent-warm);
+      letter-spacing: 0.5px;
+      margin-bottom: 8px;
+    }
+    .orient-desc {
+      font-size: 11.5px;
+      color: var(--text-muted);
+      line-height: 1.45;
+      margin-bottom: 16px;
+    }
+    .orient-btn-action {
+      width: 100%;
+      background: linear-gradient(135deg, #ff9e44, #e05a30);
+      border: none;
+      color: #fff;
+      font-family: inherit;
+      font-size: 12px;
+      font-weight: 800;
+      padding: 11px 16px;
+      border-radius: 999px;
+      cursor: pointer;
+      box-shadow: 0 4px 14px rgba(255, 158, 68, 0.4);
+      margin-bottom: 10px;
+      transition: transform 0.15s ease;
+      touch-action: manipulation;
+    }
+    .orient-btn-action:active {
+      transform: scale(0.97);
+    }
+    .orient-btn-dismiss {
+      background: transparent;
+      border: 1px solid rgba(255, 255, 255, 0.15);
+      color: var(--text-muted);
+      font-family: inherit;
+      font-size: 10.5px;
+      padding: 6px 14px;
+      border-radius: 999px;
+      cursor: pointer;
+      touch-action: manipulation;
     }
 
     /* Character Selection Modal Overlay */
@@ -976,7 +1073,7 @@
 <body>
   <div id="viewport">
     <div class="canvas-frame" id="canvasFrame">
-      <canvas id="gameCanvas" width="360" height="202"></canvas>
+      <canvas id="gameCanvas" width="480" height="270"></canvas>
     </div>
 
     <!-- Self-Diagnostic P2P Overlay -->
@@ -1026,6 +1123,10 @@
       </div>
 
       <div class="hud-group">
+        <button id="timeBtn" class="hud-btn" title="Ubah Waktu: Siang, Senja, Malam (Tekan T)">
+          <span id="timeIcon">🌙</span>
+          <span id="timeLabel">Malam</span>
+        </button>
         <button id="openCharBtn" class="hud-btn" title="Pilih Karakter & Profil">
           <span id="charHudIcon">👤</span>
           <span id="charHudLabel">Karakter</span>
@@ -1045,7 +1146,7 @@
 
     <!-- Context Hint (Desktop) -->
     <div id="interactionHint" class="interaction-hint">
-      <span>WASD</span> Gerak &bull; <span>E</span> Duduk &bull; <span>SPACE</span> Mancing &bull; <span>C</span> Karakter &bull; <span>ENTER</span> Chat
+      <span>WASD</span> Gerak &bull; <span>E</span> Duduk &bull; <span>SPACE</span> Mancing &bull; <span>T</span> Waktu &bull; <span>C</span> Karakter &bull; <span>ENTER</span> Chat
     </div>
 
     <!-- Bottom Quick Chat / Emoji Bar (Desktop) -->
@@ -1069,6 +1170,9 @@
           <button type="button" class="emoji-btn" data-emoji="❤️">❤️</button>
           <button type="button" class="emoji-btn" data-emoji="💤">💤</button>
         </div>
+        <button type="button" class="mobile-char-toggle" id="mobileTimeBtn" title="Tukar Waktu">
+          <span id="mobileTimeIcon">🌙 Malam</span>
+        </button>
         <button type="button" class="mobile-char-toggle" id="mobileOpenCharBtn" title="Pilih Karakter">
           <span>👤 Karakter</span>
         </button>
@@ -1113,6 +1217,23 @@
       </div>
     </div>
 
+
+    <!-- Mobile Orientation Guidance Modal -->
+    <div class="orientation-modal-overlay" id="orientationModal">
+      <div class="orientation-modal-dialog">
+        <div class="orient-icon-anim">📱 ➔ 📲</div>
+        <div class="orient-title">Mod Melintang (Landscape)</div>
+        <div class="orient-desc">
+          Paparan map dan kawalan gamepad jauh lebih luas & selesa dalam mod melintang (Landscape).
+        </div>
+        <button type="button" class="orient-btn-action" id="btnLockLandscape">
+          🔄 Tukar ke Landscape (Fullscreen)
+        </button>
+        <button type="button" class="orient-btn-dismiss" id="btnDismissOrient">
+          Teruskan dalam Portrait ✕
+        </button>
+      </div>
+    </div>
 
     <!-- Character Selection Modal -->
     <div class="character-modal-overlay" id="charModalOverlay">
@@ -1235,11 +1356,11 @@
         ]
       }
     };
-    const V_WIDTH = 360;
-    const V_HEIGHT = 202;
-    const FIRE_X = 160;
-    const FIRE_Y = 100;
-    const LAKE_SHORE_X = 275;
+    const V_WIDTH = 480;
+    const V_HEIGHT = 270;
+    const FIRE_X = 200;
+    const FIRE_Y = 135;
+    const LAKE_SHORE_X = 365;
 
     // Pastel Retro Color Schemes for 16x16 Pixel Chibi Avatars
     const COLOR_THEMES = [
@@ -1589,16 +1710,17 @@
     // 3. LOG BENCHES & ENVIRONMENT PROPS
     // ----------------------------------------------------
     const LOG_BENCHES = [
-      { id: 'top', x: 145, y: 72, w: 30, h: 10, sitX: 160, sitY: 74, faceDir: 'down' },
-      { id: 'bottom', x: 145, y: 126, w: 30, h: 10, sitX: 160, sitY: 122, faceDir: 'up' },
-      { id: 'left', x: 122, y: 92, w: 10, h: 24, sitX: 126, sitY: 104, faceDir: 'right' },
-      { id: 'right', x: 188, y: 92, w: 10, h: 24, sitX: 184, sitY: 104, faceDir: 'left' }
+      { id: 'top', x: 185, y: 107, w: 30, h: 10, sitX: 200, sitY: 109, faceDir: 'down' },
+      { id: 'bottom', x: 185, y: 161, w: 30, h: 10, sitX: 200, sitY: 157, faceDir: 'up' },
+      { id: 'left', x: 162, y: 127, w: 10, h: 24, sitX: 166, sitY: 139, faceDir: 'right' },
+      { id: 'right', x: 228, y: 127, w: 10, h: 24, sitX: 224, sitY: 139, faceDir: 'left' }
     ];
 
     const TREES = [
-      { x: 30, y: 35 }, { x: 75, y: 25 }, { x: 120, y: 18 },
-      { x: 25, y: 95 }, { x: 45, y: 155 }, { x: 95, y: 175 },
-      { x: 155, y: 182 }, { x: 215, y: 170 }, { x: 200, y: 25 }
+      { x: 40, y: 35 }, { x: 95, y: 25 }, { x: 160, y: 22 }, { x: 235, y: 26 }, { x: 305, y: 32 },
+      { x: 30, y: 95 }, { x: 32, y: 165 }, { x: 40, y: 235 },
+      { x: 105, y: 245 }, { x: 175, y: 242 }, { x: 255, y: 238 }, { x: 320, y: 230 },
+      { x: 335, y: 100 }
     ];
 
     // ----------------------------------------------------
@@ -1613,8 +1735,8 @@
       name: savedName,
       character: savedChar,
       theme: myTheme,
-      x: 140,
-      y: 110,
+      x: 180,
+      y: 145,
       dir: 'down',
       isMoving: false,
       state: 'idle', // 'idle' | 'sitting' | 'fishing'
@@ -1633,6 +1755,55 @@
     const campfireEmbers = [];
     const waterRipples = [];
     const stepParticles = [];
+    const ambientParticles = [];
+
+    // Time Modes: Day (Siang), Sunset (Senja), Night (Malam)
+    const TIME_MODES = [
+      { id: 'day', label: 'Siang', icon: '☀️', toast: 'Waktu ditukar ke Siang ☀️' },
+      { id: 'sunset', label: 'Senja', icon: '🌅', toast: 'Waktu ditukar ke Petang / Senja 🌅' },
+      { id: 'night', label: 'Malam', icon: '🌙', toast: 'Waktu ditukar ke Malam 🌙' }
+    ];
+    let currentTimeMode = localStorage.getItem('pixel_camp_time') || 'night';
+    if (!['day', 'sunset', 'night'].includes(currentTimeMode)) currentTimeMode = 'night';
+
+    function setTimeMode(mode, broadcast = true) {
+      if (!['day', 'sunset', 'night'].includes(mode)) return;
+      currentTimeMode = mode;
+      localStorage.setItem('pixel_camp_time', mode);
+
+      const def = TIME_MODES.find(m => m.id === mode) || TIME_MODES[2];
+
+      const timeIcon = document.getElementById('timeIcon');
+      const timeLabel = document.getElementById('timeLabel');
+      if (timeIcon) timeIcon.textContent = def.icon;
+      if (timeLabel) timeLabel.textContent = def.label;
+
+      const mobileTimeIcon = document.getElementById('mobileTimeIcon');
+      if (mobileTimeIcon) mobileTimeIcon.textContent = `${def.icon} ${def.label}`;
+
+      if (canvas) {
+        if (mode === 'day') canvas.style.backgroundColor = '#387340';
+        else if (mode === 'sunset') canvas.style.backgroundColor = '#3d2e26';
+        else canvas.style.backgroundColor = '#0b111a';
+      }
+      const viewport = document.getElementById('viewport');
+      if (viewport) {
+        if (mode === 'day') viewport.style.background = '#152217';
+        else if (mode === 'sunset') viewport.style.background = '#22141c';
+        else viewport.style.background = '#080a0f';
+      }
+
+      if (broadcast && sendAction) {
+        sendAction({ type: 'time', mode });
+      }
+    }
+
+    function cycleTimeMode() {
+      const currentIdx = TIME_MODES.findIndex(m => m.id === currentTimeMode);
+      const nextMode = TIME_MODES[(currentIdx + 1) % TIME_MODES.length];
+      setTimeMode(nextMode.id, true);
+      showToast(nextMode.toast);
+    }
 
     // Keys State
     const keys = { up: false, down: false, left: false, right: false };
@@ -1672,8 +1843,10 @@
         targetH = Math.floor(V_HEIGHT * scale);
       }
 
-      canvas.style.width = `${Math.max(180, targetW)}px`;
-      canvas.style.height = `${Math.max(101, targetH)}px`;
+      canvas.width = V_WIDTH;
+      canvas.height = V_HEIGHT;
+      canvas.style.width = `${Math.max(240, targetW)}px`;
+      canvas.style.height = `${Math.max(135, targetH)}px`;
     }
     window.addEventListener('resize', resizeCanvas);
     window.addEventListener('orientationchange', () => setTimeout(resizeCanvas, 150));
@@ -1692,6 +1865,31 @@
       );
     }
 
+    function isMobileDevice() {
+      return (
+        /Android|webOS|iPhone|iPad|iPod|BlackBerry|IEMobile|Opera Mini/i.test(navigator.userAgent) ||
+        (window.matchMedia && window.matchMedia('(pointer: coarse)').matches && Math.min(window.innerWidth, window.innerHeight) <= 768)
+      );
+    }
+
+    async function requestLandscapeLock() {
+      try {
+        const docEl = document.documentElement;
+        const req = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.mozRequestFullScreen || docEl.msRequestFullscreen;
+        if (req && !isFullscreenActive()) {
+          await req.call(docEl).catch(() => {});
+        }
+        if (screen.orientation && screen.orientation.lock) {
+          await screen.orientation.lock('landscape').catch(() => {});
+        } else if (screen.lockOrientation) {
+          screen.lockOrientation('landscape');
+        }
+      } catch (err) {
+        console.warn('Orientation lock notice:', err);
+      }
+      setTimeout(resizeCanvas, 150);
+    }
+
     function toggleFullscreen() {
       audio.init();
       const doc = document;
@@ -1700,12 +1898,20 @@
       if (!isFullscreenActive()) {
         const req = docEl.requestFullscreen || docEl.webkitRequestFullscreen || docEl.mozRequestFullScreen || docEl.msRequestFullscreen;
         if (req) {
-          req.call(docEl).catch(err => console.log('Fullscreen error:', err));
+          req.call(docEl).then(() => {
+            if (isMobileDevice() && screen.orientation && screen.orientation.lock) {
+              screen.orientation.lock('landscape').catch(() => {});
+            }
+          }).catch(err => console.log('Fullscreen error:', err));
         }
       } else {
         const exit = doc.exitFullscreen || doc.webkitExitFullscreen || doc.mozCancelFullScreen || doc.msExitFullscreen;
         if (exit) {
-          exit.call(doc).catch(err => console.log('Exit fullscreen error:', err));
+          exit.call(doc).then(() => {
+            if (screen.orientation && screen.orientation.unlock) {
+              screen.orientation.unlock().catch(() => {});
+            }
+          }).catch(err => console.log('Exit fullscreen error:', err));
         }
       }
     }
@@ -1798,6 +2004,7 @@
         color: themeObj.shirt || '#ff9e44',
         theme: themeObj,
         fishBite: Boolean(localPlayer.fishBite),
+        time: currentTimeMode,
         ts: Date.now()
       };
     }
@@ -1840,10 +2047,10 @@
           character: 'steve',
           color: COLOR_THEMES[0].shirt,
           theme: COLOR_THEMES[0],
-          x: 160,
-          y: 110,
-          targetX: 160,
-          targetY: 110,
+          x: 180,
+          y: 145,
+          targetX: 180,
+          targetY: 145,
           hasSyncedPosition: false,
           handshakeComplete: false,
           transport,
@@ -2075,6 +2282,9 @@
         if (isNew) {
           console.info(`[P2P:JOIN] Peer discovered via ${payload.type || 'SYNC'} (${transport}): ${peerId}`);
         }
+        if (payload.state && payload.state.time && ['day', 'sunset', 'night'].includes(payload.state.time)) {
+          setTimeMode(payload.state.time, false);
+        }
         console.info(`[P2P:STATE] Received ${payload.type || 'SYNC'} from ${peerId}:`, payload.state);
 
         // Step 2 of Handshake: If we received a SYN, acknowledge immediately with our own current state (ACK)
@@ -2129,6 +2339,10 @@
           p.dir = data.dir;
         } else if (data.type === 'stand') {
           p.state = 'idle';
+        } else if (data.type === 'time' && ['day', 'sunset', 'night'].includes(data.mode)) {
+          setTimeMode(data.mode, false);
+          const def = TIME_MODES.find(m => m.id === data.mode);
+          if (def) showToast(`Rakan menukar waktu ke ${def.label} ${def.icon}`);
         } else if (data.type === 'fish') {
           p.state = data.fishing ? 'fishing' : 'idle';
           p.fishBite = data.bite || false;
@@ -2380,6 +2594,10 @@
 
       if (k === 'e') {
         toggleSit();
+        e.preventDefault();
+      }
+      if (k === 't') {
+        cycleTimeMode();
         e.preventDefault();
       }
       if (e.code === 'Space') {
@@ -2808,6 +3026,53 @@
         if (p.life <= 0) stepParticles.splice(i, 1);
       }
 
+      // 2c. Ambient particles (Fireflies at night, Sunset motes, Daytime pollen)
+      if (Math.random() < 0.18) {
+        if (currentTimeMode === 'night' && ambientParticles.length < 25) {
+          ambientParticles.push({
+            x: Math.random() * (LAKE_SHORE_X - 20) + 10,
+            y: Math.random() * (V_HEIGHT - 30) + 15,
+            vx: (Math.random() - 0.5) * 8,
+            vy: (Math.random() - 0.5) * 8,
+            life: Math.random() * 3 + 2,
+            maxLife: 4,
+            size: 1.5,
+            color: '#d4ff59'
+          });
+        } else if (currentTimeMode === 'sunset' && ambientParticles.length < 20) {
+          ambientParticles.push({
+            x: Math.random() * V_WIDTH,
+            y: Math.random() * V_HEIGHT,
+            vx: Math.random() * 12 + 4,
+            vy: (Math.random() - 0.5) * 6,
+            life: Math.random() * 2.5 + 1.5,
+            maxLife: 3,
+            size: 1.2,
+            color: '#ffc87a'
+          });
+        } else if (currentTimeMode === 'day' && ambientParticles.length < 15) {
+          ambientParticles.push({
+            x: -5,
+            y: Math.random() * V_HEIGHT,
+            vx: Math.random() * 15 + 10,
+            vy: Math.sin(now * 0.002) * 5,
+            life: 5,
+            maxLife: 5,
+            size: 1.5,
+            color: 'rgba(255, 255, 255, 0.7)'
+          });
+        }
+      }
+      for (let i = ambientParticles.length - 1; i >= 0; i--) {
+        const ap = ambientParticles[i];
+        ap.x += ap.vx * dt;
+        ap.y += ap.vy * dt;
+        ap.life -= dt;
+        if (ap.life <= 0 || ap.x < -10 || ap.x > V_WIDTH + 10 || ap.y < -10 || ap.y > V_HEIGHT + 10) {
+          ambientParticles.splice(i, 1);
+        }
+      }
+
       // 3. Local Player Movement & Logic (Keys & Tap-to-Move)
       if (localPlayer.state === 'idle') {
         let dx = 0;
@@ -3037,33 +3302,90 @@
     function render(now) {
       ctx.clearRect(0, 0, V_WIDTH, V_HEIGHT);
 
-      // --- LAYER 1: GRASSY MEADOW & STARRY SKY ---
-      ctx.fillStyle = '#0f171e'; // Deep night campsite ground
-      ctx.fillRect(0, 0, LAKE_SHORE_X, V_HEIGHT);
+      // --- LAYER 1: GRASSY MEADOW ---
+      if (currentTimeMode === 'day') {
+        ctx.fillStyle = '#3a7d44'; // Vibrant daytime meadow
+        ctx.fillRect(0, 0, LAKE_SHORE_X, V_HEIGHT);
 
-      // Starry night twinkling background grass sparks
-      ctx.fillStyle = '#17232d';
-      for (let x = 12; x < LAKE_SHORE_X; x += 32) {
-        for (let y = 20; y < V_HEIGHT; y += 32) {
-          ctx.fillRect(x + ((y * 7) % 11), y, 2, 1);
+        // Sunny grass specks
+        ctx.fillStyle = '#4c9957';
+        for (let x = 12; x < LAKE_SHORE_X; x += 32) {
+          for (let y = 20; y < V_HEIGHT; y += 32) {
+            ctx.fillRect(x + ((y * 7) % 11), y, 2, 1);
+          }
+        }
+        // Tiny yellow meadow wildflowers
+        ctx.fillStyle = '#ffe066';
+        for (let x = 20; x < LAKE_SHORE_X; x += 48) {
+          for (let y = 28; y < V_HEIGHT; y += 48) {
+            ctx.fillRect(x + ((y * 5) % 13), y, 1, 1);
+          }
+        }
+      } else if (currentTimeMode === 'sunset') {
+        ctx.fillStyle = '#423226'; // Warm twilight dusk grass
+        ctx.fillRect(0, 0, LAKE_SHORE_X, V_HEIGHT);
+
+        ctx.fillStyle = '#5c4535';
+        for (let x = 12; x < LAKE_SHORE_X; x += 32) {
+          for (let y = 20; y < V_HEIGHT; y += 32) {
+            ctx.fillRect(x + ((y * 7) % 11), y, 2, 1);
+          }
+        }
+      } else {
+        ctx.fillStyle = '#0f171e'; // Deep night campsite ground
+        ctx.fillRect(0, 0, LAKE_SHORE_X, V_HEIGHT);
+
+        ctx.fillStyle = '#17232d';
+        for (let x = 12; x < LAKE_SHORE_X; x += 32) {
+          for (let y = 20; y < V_HEIGHT; y += 32) {
+            ctx.fillRect(x + ((y * 7) % 11), y, 2, 1);
+          }
         }
       }
 
       // --- LAYER 2: LAKE SHORE WATER & RIPPLES ---
-      ctx.fillStyle = '#091c2b'; // Dark blue lake depth
-      ctx.fillRect(LAKE_SHORE_X, 0, V_WIDTH - LAKE_SHORE_X, V_HEIGHT);
+      if (currentTimeMode === 'day') {
+        ctx.fillStyle = '#2679b8'; // Crisp lake water
+        ctx.fillRect(LAKE_SHORE_X, 0, V_WIDTH - LAKE_SHORE_X, V_HEIGHT);
 
-      // Shoreline foam wave line
-      ctx.fillStyle = '#17405e';
-      ctx.fillRect(LAKE_SHORE_X - 1, 0, 3, V_HEIGHT);
+        ctx.fillStyle = '#7dd3fc'; // Bright shoreline surf
+        ctx.fillRect(LAKE_SHORE_X - 1, 0, 3, V_HEIGHT);
 
-      // Water ripples
-      ctx.strokeStyle = '#26618d';
-      ctx.lineWidth = 1;
-      for (const r of waterRipples) {
-        ctx.beginPath();
-        ctx.ellipse(r.x, r.y, r.r * 1.8, r.r * 0.6, 0, 0, Math.PI * 2);
-        ctx.stroke();
+        ctx.strokeStyle = '#52b2f5';
+        ctx.lineWidth = 1;
+        for (const r of waterRipples) {
+          ctx.beginPath();
+          ctx.ellipse(r.x, r.y, r.r * 1.8, r.r * 0.6, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      } else if (currentTimeMode === 'sunset') {
+        ctx.fillStyle = '#3a2042'; // Reflective purple-magenta dusk lake
+        ctx.fillRect(LAKE_SHORE_X, 0, V_WIDTH - LAKE_SHORE_X, V_HEIGHT);
+
+        ctx.fillStyle = '#c76e7b';
+        ctx.fillRect(LAKE_SHORE_X - 1, 0, 3, V_HEIGHT);
+
+        ctx.strokeStyle = '#f59e6b';
+        ctx.lineWidth = 1;
+        for (const r of waterRipples) {
+          ctx.beginPath();
+          ctx.ellipse(r.x, r.y, r.r * 1.8, r.r * 0.6, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
+      } else {
+        ctx.fillStyle = '#091c2b'; // Dark blue lake depth
+        ctx.fillRect(LAKE_SHORE_X, 0, V_WIDTH - LAKE_SHORE_X, V_HEIGHT);
+
+        ctx.fillStyle = '#17405e';
+        ctx.fillRect(LAKE_SHORE_X - 1, 0, 3, V_HEIGHT);
+
+        ctx.strokeStyle = '#26618d';
+        ctx.lineWidth = 1;
+        for (const r of waterRipples) {
+          ctx.beginPath();
+          ctx.ellipse(r.x, r.y, r.r * 1.8, r.r * 0.6, 0, 0, Math.PI * 2);
+          ctx.stroke();
+        }
       }
 
       // --- LAYER 3: TREES (PINE PIXEL SHAPES) ---
@@ -3072,12 +3394,20 @@
       }
 
       // --- LAYER 4: LOG BENCHES ---
+      let logBark, logGrain, logShadow;
+      if (currentTimeMode === 'day') {
+        logBark = '#5e3822'; logGrain = '#825234'; logShadow = '#3b2214';
+      } else if (currentTimeMode === 'sunset') {
+        logBark = '#4f2d1d'; logGrain = '#704128'; logShadow = '#2b170e';
+      } else {
+        logBark = '#422417'; logGrain = '#613824'; logShadow = '#26140c';
+      }
       for (const log of LOG_BENCHES) {
-        ctx.fillStyle = '#422417'; // Bark
+        ctx.fillStyle = logBark;
         ctx.fillRect(log.x, log.y, log.w, log.h);
-        ctx.fillStyle = '#613824'; // Wood grain highlight
+        ctx.fillStyle = logGrain;
         ctx.fillRect(log.x + 1, log.y + 1, log.w - 2, log.h - 3);
-        ctx.fillStyle = '#26140c'; // Shadow
+        ctx.fillStyle = logShadow;
         ctx.fillRect(log.x, log.y + log.h - 1, log.w, 2);
       }
 
@@ -3089,6 +3419,16 @@
         const alpha = Math.max(0, (sp.life / sp.maxLife) * 0.55);
         ctx.fillStyle = `rgba(160, 140, 115, ${alpha})`;
         ctx.fillRect(Math.round(sp.x), Math.round(sp.y), sp.size, sp.size);
+      }
+
+      // --- LAYER 5.8: AMBIENT PARTICLES (FIREFLIES / DUST / POLLEN) ---
+      for (const ap of ambientParticles) {
+        const alpha = Math.sin((ap.life / ap.maxLife) * Math.PI);
+        ctx.save();
+        ctx.globalAlpha = Math.max(0, Math.min(1, alpha));
+        ctx.fillStyle = ap.color;
+        ctx.fillRect(Math.round(ap.x), Math.round(ap.y), ap.size, ap.size);
+        ctx.restore();
       }
 
       // --- LAYER 6: Y-SORTED ENTITIES (PLAYERS) ---
@@ -3121,29 +3461,52 @@
     }
 
     function drawPixelPineTree(x, y) {
+      let trunkCol, folDark, folLight;
+      if (currentTimeMode === 'day') {
+        trunkCol = '#5a3622';
+        folDark = '#1a4e28';
+        folLight = '#2d7c43';
+      } else if (currentTimeMode === 'sunset') {
+        trunkCol = '#42261b';
+        folDark = '#252e22';
+        folLight = '#444d2e';
+      } else {
+        trunkCol = '#281710';
+        folDark = '#0b201c';
+        folLight = '#163b33';
+      }
+
       // Trunk
-      ctx.fillStyle = '#281710';
+      ctx.fillStyle = trunkCol;
       ctx.fillRect(x - 2, y + 10, 4, 8);
       // Leaves (Tiered triangular pixel blocks)
-      ctx.fillStyle = '#0b201c'; // Dark pine shadow
+      ctx.fillStyle = folDark;
       ctx.fillRect(x - 10, y + 6, 20, 5);
       ctx.fillRect(x - 8, y + 1, 16, 5);
       ctx.fillRect(x - 5, y - 4, 10, 5);
       ctx.fillRect(x - 2, y - 8, 4, 4);
 
-      ctx.fillStyle = '#163b33'; // Highlight foliage
+      ctx.fillStyle = folLight;
       ctx.fillRect(x - 8, y + 7, 16, 2);
       ctx.fillRect(x - 6, y + 2, 12, 2);
       ctx.fillRect(x - 3, y - 3, 6, 2);
     }
 
     function drawAnimatedCampfire(now) {
+      let stone1, stone2, stone3;
+      if (currentTimeMode === 'day') {
+        stone1 = '#646975'; stone2 = '#838a98'; stone3 = '#3b271d';
+      } else if (currentTimeMode === 'sunset') {
+        stone1 = '#4e4348'; stone2 = '#6e5d65'; stone3 = '#2c1a19';
+      } else {
+        stone1 = '#343842'; stone2 = '#4c525f'; stone3 = '#1e100c';
+      }
       // Stone circle ring around fire
-      ctx.fillStyle = '#343842';
+      ctx.fillStyle = stone1;
       ctx.fillRect(FIRE_X - 10, FIRE_Y - 6, 20, 14);
-      ctx.fillStyle = '#4c525f';
+      ctx.fillStyle = stone2;
       ctx.fillRect(FIRE_X - 8, FIRE_Y - 4, 16, 10);
-      ctx.fillStyle = '#1e100c';
+      ctx.fillStyle = stone3;
       ctx.fillRect(FIRE_X - 6, FIRE_Y - 2, 12, 6);
 
       // Animated multi-colored fire flames
@@ -3378,22 +3741,62 @@
       ctx.restore();
     }
     function drawLightingOverlay(now) {
-      // Warm Radial Gradient from Campfire Light
-      const glow = Math.sin(now * 0.005) * 4;
-      const rad = ctx.createRadialGradient(FIRE_X, FIRE_Y, 15, FIRE_X, FIRE_Y, 110 + glow);
-      rad.addColorStop(0, 'rgba(255, 175, 75, 0.28)');
-      rad.addColorStop(0.5, 'rgba(255, 115, 35, 0.12)');
-      rad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+      if (currentTimeMode === 'day') {
+        // Soft subtle sunny ambient warmth
+        const sunGrad = ctx.createLinearGradient(0, 0, V_WIDTH, V_HEIGHT);
+        sunGrad.addColorStop(0, 'rgba(255, 250, 220, 0.08)');
+        sunGrad.addColorStop(1, 'rgba(255, 225, 170, 0.03)');
+        ctx.fillStyle = sunGrad;
+        ctx.fillRect(0, 0, V_WIDTH, V_HEIGHT);
 
-      ctx.fillStyle = rad;
-      ctx.fillRect(0, 0, V_WIDTH, V_HEIGHT);
+        // Subtle gentle campfire warm glow in daylight
+        const glow = Math.sin(now * 0.005) * 2;
+        const rad = ctx.createRadialGradient(FIRE_X, FIRE_Y, 10, FIRE_X, FIRE_Y, 70 + glow);
+        rad.addColorStop(0, 'rgba(255, 175, 75, 0.12)');
+        rad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = rad;
+        ctx.fillRect(0, 0, V_WIDTH, V_HEIGHT);
+      } else if (currentTimeMode === 'sunset') {
+        // Dramatic golden-hour & dusk sky wash
+        const sunsetGrad = ctx.createLinearGradient(0, 0, V_WIDTH, V_HEIGHT);
+        sunsetGrad.addColorStop(0, 'rgba(255, 130, 45, 0.22)');
+        sunsetGrad.addColorStop(0.55, 'rgba(225, 75, 95, 0.16)');
+        sunsetGrad.addColorStop(1, 'rgba(75, 25, 80, 0.22)');
+        ctx.fillStyle = sunsetGrad;
+        ctx.fillRect(0, 0, V_WIDTH, V_HEIGHT);
 
-      // Night vignette
-      const vignette = ctx.createRadialGradient(V_WIDTH / 2, V_HEIGHT / 2, 80, V_WIDTH / 2, V_HEIGHT / 2, 220);
-      vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
-      vignette.addColorStop(1, 'rgba(3, 5, 8, 0.45)');
-      ctx.fillStyle = vignette;
-      ctx.fillRect(0, 0, V_WIDTH, V_HEIGHT);
+        // Warm dusk campfire glow
+        const glow = Math.sin(now * 0.005) * 4;
+        const rad = ctx.createRadialGradient(FIRE_X, FIRE_Y, 15, FIRE_X, FIRE_Y, 115 + glow);
+        rad.addColorStop(0, 'rgba(255, 185, 75, 0.26)');
+        rad.addColorStop(0.5, 'rgba(255, 105, 30, 0.10)');
+        rad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = rad;
+        ctx.fillRect(0, 0, V_WIDTH, V_HEIGHT);
+
+        // Soft dusk vignette
+        const vignette = ctx.createRadialGradient(V_WIDTH / 2, V_HEIGHT / 2, 90, V_WIDTH / 2, V_HEIGHT / 2, 260);
+        vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        vignette.addColorStop(1, 'rgba(38, 12, 28, 0.36)');
+        ctx.fillStyle = vignette;
+        ctx.fillRect(0, 0, V_WIDTH, V_HEIGHT);
+      } else {
+        // Warm radial gradient from campfire light
+        const glow = Math.sin(now * 0.005) * 4;
+        const rad = ctx.createRadialGradient(FIRE_X, FIRE_Y, 15, FIRE_X, FIRE_Y, 125 + glow);
+        rad.addColorStop(0, 'rgba(255, 175, 75, 0.28)');
+        rad.addColorStop(0.5, 'rgba(255, 115, 35, 0.12)');
+        rad.addColorStop(1, 'rgba(0, 0, 0, 0)');
+        ctx.fillStyle = rad;
+        ctx.fillRect(0, 0, V_WIDTH, V_HEIGHT);
+
+        // Deep night vignette
+        const vignette = ctx.createRadialGradient(V_WIDTH / 2, V_HEIGHT / 2, 90, V_WIDTH / 2, V_HEIGHT / 2, 260);
+        vignette.addColorStop(0, 'rgba(0, 0, 0, 0)');
+        vignette.addColorStop(1, 'rgba(3, 5, 8, 0.48)');
+        ctx.fillStyle = vignette;
+        ctx.fillRect(0, 0, V_WIDTH, V_HEIGHT);
+      }
     }
 
     // ----------------------------------------------------
@@ -3521,6 +3924,92 @@
         }
       }
     });
+
+    // Time Mode HUD Button Listeners
+    const timeBtn = document.getElementById('timeBtn');
+    const mobileTimeBtn = document.getElementById('mobileTimeBtn');
+    if (timeBtn) {
+      timeBtn.addEventListener('click', () => {
+        audio.init();
+        cycleTimeMode();
+      });
+    }
+    if (mobileTimeBtn) {
+      mobileTimeBtn.addEventListener('click', () => {
+        audio.init();
+        cycleTimeMode();
+      });
+    }
+    // Set initial time mode UI and styling
+    setTimeMode(currentTimeMode, false);
+
+    // ----------------------------------------------------
+    // MOBILE ORIENTATION & AUTO-ROTATE CONTROLLER
+    // ----------------------------------------------------
+    const orientationModal = document.getElementById('orientationModal');
+    const btnLockLandscape = document.getElementById('btnLockLandscape');
+    const btnDismissOrient = document.getElementById('btnDismissOrient');
+    let userDismissedOrient = false;
+    let hasAttemptedAutoLock = false;
+
+    function checkOrientationPrompt() {
+      if (!orientationModal) return;
+      const isMobile = isMobileDevice();
+      const isPortrait = window.innerHeight > window.innerWidth;
+
+      if (isMobile && isPortrait && !userDismissedOrient) {
+        orientationModal.classList.add('open');
+      } else {
+        orientationModal.classList.remove('open');
+      }
+    }
+
+    // Auto-attempt orientation lock on first touch interaction on mobile
+    async function handleFirstTouchAutoLandscape() {
+      if (hasAttemptedAutoLock) return;
+      hasAttemptedAutoLock = true;
+      if (isMobileDevice() && window.innerHeight > window.innerWidth) {
+        await requestLandscapeLock();
+      }
+    }
+
+    window.addEventListener('touchstart', handleFirstTouchAutoLandscape, { passive: true, once: true });
+    window.addEventListener('pointerdown', handleFirstTouchAutoLandscape, { passive: true, once: true });
+
+    if (btnLockLandscape) {
+      btnLockLandscape.addEventListener('click', async () => {
+        audio.init();
+        await requestLandscapeLock();
+        if (orientationModal) orientationModal.classList.remove('open');
+      });
+    }
+
+    if (btnDismissOrient) {
+      btnDismissOrient.addEventListener('click', () => {
+        audio.init();
+        userDismissedOrient = true;
+        if (orientationModal) orientationModal.classList.remove('open');
+      });
+    }
+
+    window.addEventListener('resize', checkOrientationPrompt);
+    window.addEventListener('orientationchange', () => {
+      setTimeout(() => {
+        checkOrientationPrompt();
+        resizeCanvas();
+      }, 150);
+    });
+    if (screen.orientation) {
+      screen.orientation.addEventListener('change', () => {
+        setTimeout(() => {
+          checkOrientationPrompt();
+          resizeCanvas();
+        }, 150);
+      });
+    }
+
+    // Initial check
+    setTimeout(checkOrientationPrompt, 500);
 
     // Auto-open modal for first time users
     if (!localStorage.getItem('pixel_camp_char_chosen')) {
